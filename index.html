@@ -27,14 +27,9 @@
   .pill{display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; background:#0f172a; border:1px solid #374151; font-size:12px; color:var(--muted)}
   canvas{width:100%; height:auto; background:#000; border-radius:12px; touch-action:none}
   .mini{font-size:12px; color:var(--muted)}
-  .charts{display:grid; grid-template-columns: 1fr 1fr; gap:var(--gap)}
-  .charts canvas{background:#0a0f1c;}
   .kpi{display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; margin:8px 0 0}
   .kpi .card{padding:10px}
   .kpi .val{font-weight:700; font-size:18px}
-  .dot{width:10px; height:10px; border-radius:50%}
-  .legend{display:flex; gap:10px; align-items:center; margin:6px 0 0}
-  .hint{color:#a5b4fc}
   .sep{height:1px; background:#1f2937; margin:8px 0}
   details summary{cursor:pointer}
   .table-fixed thead th{position:sticky; top:0; background:#0f172a}
@@ -69,7 +64,7 @@
       </div>
 
       <div class="row" style="margin-top:6px">
-        <button id="btnCalib" class="accent">1 m 校正（ドラッグ または 2点タップ）</button>
+        <button id="btnCalib" class="accent">1 m 校正（ドラッグ）</button>
         <span id="scaleInfo" class="mini">未校正</span>
         <button id="btnSetOrigin" style="display:none">原点設定（任意）</button>
         <button id="btnOriginDrag" style="display:none">原点ドラッグ</button>
@@ -81,7 +76,7 @@
       <div class="sep"></div>
 
       <canvas id="canvas" width="960" height="540"></canvas>
-      <div class="mini hint">操作ヒント：<b>校正</b>を押した後、1 m の両端をドラッグ（または2点タップ）で指定 → 各コマでマーカー位置をタップ（記録後は自動で1コマ進む）。<br>原点は任意（最初の記録点を原点扱い）。</div>
+      <div class="mini hint">操作ヒント：<b>校正</b>を押した後、1 m の両端をドラッグで指定 → 各コマでマーカー位置をタップ（記録後は自動で1コマ進む）。<br>原点は任意（最初の記録点を原点扱い）。</div>
 
       <video id="video" playsinline muted preload="metadata" style="display:none"></video>
     </div>
@@ -464,7 +459,7 @@
     const dt = 1.0/Math.max(1, fps);
     video.pause(); playing=false; btnPlay.textContent = '再生/一時停止';
     const target = clamp(video.currentTime + dir*dt, 0, (video.duration||0));
-    seekTo(target);
+    return seekTo(target); // ← ここが変更点：Promise を返す
   }
   function clamp(v,min=0,max=1){ return Math.min(max, Math.max(min, v)); }
   function clampFPS(v){ if (!isFinite(v) || v<=0) return 30; return Math.min(240, Math.max(1, v)); }
@@ -497,11 +492,13 @@
 
   btnSetOrigin.onclick = ()=>{ /* 任意原点UIを使う場合に有効化 */ }; btnSetOrigin.disabled = true;
 
-  btnUndo.onclick = ()=>{
+  // ← ここが変更点：動画も1コマ戻る
+  btnUndo.onclick = async ()=>{
     if(points.length){
       points.pop();
       kPoints.textContent = points.length;
-      recompute(); drawFrame();
+      recompute();
+      await stepFrame(-1); // 1フレーム戻す
     }
   };
 
@@ -592,9 +589,9 @@
     const rows = [header.join(',')];
     for (let i=0;i<points.length;i++){
       const row = [i, t[i]?.toFixed(6), points[i].xpx.toFixed(2), points[i].ypx.toFixed(2), x[i]?.toFixed(6), y[i]?.toFixed(6), (vx[i]??NaN).toFixed(6), (vy[i]??NaN).toFixed(6), (ax[i]??NaN).toFixed(6), (ay[i]??NaN).toFixed(6)];
-      rows.push(row.join(',')); // ← 1行はカンマ区切り
+      rows.push(row.join(',')); // 1行はカンマ区切り
     }
-    const csv = rows.join('\n'); // ← 行ごとに改行
+    const csv = rows.join('\n'); // 行ごとに改行
     download('motion_data.csv', new Blob([csv], {type:'text/csv'}));
   };
 
