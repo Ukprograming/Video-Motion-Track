@@ -69,7 +69,7 @@
       </div>
 
       <div class="row" style="margin-top:6px">
-        <button id="btnCalib" class="accent">1 m 校正（2点クリック）</button>
+        <button id="btnCalib" class="accent">1 m 校正（ドラッグ または 2点タップ）</button>
         <span id="scaleInfo" class="mini">未校正</span>
         <button id="btnSetOrigin" style="display:none">原点設定（任意）</button>
         <button id="btnOriginDrag" style="display:none">原点ドラッグ</button>
@@ -81,7 +81,7 @@
       <div class="sep"></div>
 
       <canvas id="canvas" width="960" height="540"></canvas>
-      <div class="mini hint">操作ヒント：<b>校正</b>を押して 1 m の両端をクリック → 時系列各コマでマーカー位置をクリック（記録後は自動で1コマ進む）。<br>原点は任意（最初の記録点を原点扱い）。</div>
+      <div class="mini hint">操作ヒント：<b>校正</b>を押した後、1 m の両端をドラッグ（または2点タップ）で指定 → 各コマでマーカー位置をタップ（記録後は自動で1コマ進む）。<br>原点は任意（最初の記録点を原点扱い）。</div>
 
       <video id="video" playsinline muted preload="metadata" style="display:none"></video>
     </div>
@@ -155,7 +155,7 @@
   const btnClear = document.getElementById('btnClear');
   const btnSetOrigin = document.getElementById('btnSetOrigin');
   const btnDemo = document.getElementById('btnDemo');
-  const btnOriginDrag = document.getElementById('btnOriginDrag'); // 使わないが参照は保持
+  const btnOriginDrag = document.getElementById('btnOriginDrag');
   const fpsInput = document.getElementById('fps');
   const autoStep = document.getElementById('autoStep');
   const scaleInfo = document.getElementById('scaleInfo');
@@ -170,10 +170,15 @@
   let points = []; // {t, xpx, ypx, xm, ym}
   let origin = null; // {xm, ym}
   let scalePxPerMeter = null; // pixels per meter
-  let calibClicks = []; // [{x,y}]
+  let calibClicks = []; // [{x,y}]（タップ×2用）
   let setOriginMode = false;
   let calibMode = false;
   let playing = false;
+
+  // 校正ドラッグ用
+  let calibStart = null;     // {x, y}
+  let calibEnd = null;       // {x, y}
+  let calibDragging = false; // ドラッグ中フラグ
 
   // Chart (single)
   const ch = new Chart(document.getElementById('chart_main'), {
@@ -187,14 +192,12 @@
         x: { title: { display:true, text:'t [s]', color:'#e5e7eb' },
              ticks: { color:'#e5e7eb' }, grid: { color:'#334155' } },
         y: { title: { display:true, text:'', color:'#e5e7eb' },
-             ticks: { color:'#e5e7eb' }, grid: { color:'#334155' }
-            }
+             ticks: { color:'#e5e7eb' }, grid: { color:'#334155' } }
       },
       plugins: { legend:{display:false} }
     }
   });
   let mode='xt';
-  const charts = { ch };
 
   // Helpers
   const dpr = () => (window.devicePixelRatio || 1);
@@ -217,12 +220,28 @@
     } else {
       ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h);
     }
-    // overlays
-    if (calibClicks.length === 1) {
-      const a = calibClicks[0];
-      ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 2; ctx.beginPath();
-      ctx.moveTo(a.x, a.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.stroke();
+
+    // --- 校正オーバーレイ（ドラッグ／2点タップ両対応） ---
+    if (calibMode) {
+      let a = null, b = null;
+      if (calibDragging && calibStart) { a = calibStart; b = (calibEnd || mousePos); }
+      else if (calibClicks.length === 1) { a = calibClicks[0]; b = mousePos; }
+      if (a && b) {
+        ctx.strokeStyle = '#fde68a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+
+        const d = Math.hypot(b.x - a.x, b.y - a.y);
+        ctx.fillStyle = '#fde68a';
+        ctx.font = '12px system-ui';
+        ctx.fillText(`${d.toFixed(1)} px`, (a.x+b.x)/2 + 6, (a.y+b.y)/2 - 6);
+      }
     }
+
+    // トラックの軌跡
     if (points.length) {
       ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
       ctx.moveTo(points[0].xpx, points[0].ypx);
@@ -233,6 +252,8 @@
         ctx.beginPath(); ctx.arc(points[i].xpx, points[i].ypx, 4, 0, Math.PI*2); ctx.fill();
       }
     }
+
+    // クロスヘア
     if (mousePos){
       ctx.strokeStyle = '#9ca3afaa'; ctx.lineWidth = 1; ctx.beginPath();
       ctx.moveTo(mousePos.x-10, mousePos.y); ctx.lineTo(mousePos.x+10, mousePos.y);
@@ -241,7 +262,7 @@
     }
   }
 
-  // Pointer（iPadでの二重タップ防止：pointerdown に統一）
+  // Pointer（iPadの二重タップ防止：pointer系に統一）
   const rect = () => canvas.getBoundingClientRect();
   let mousePos = {x:0,y:0};
 
@@ -253,33 +274,37 @@
     return { x: (clientX - r.left) * ratio, y: (clientY - r.top) * ratio };
   }
 
-  // 位置ガイド用（ドラッグ中の見た目更新）
-  canvas.addEventListener('pointermove', e => { mousePos = getXY(e); drawFrame(); }, {passive:false});
-  // クリック（記録）処理は pointerdown で一本化
-  canvas.addEventListener('pointerdown', e => {
-    e.preventDefault(); // iOSでの合成clickやダブル処理抑止
-    onPointerDown(e);
+  canvas.addEventListener('pointermove', e => {
+    mousePos = getXY(e);
+    if (calibMode && calibDragging) { calibEnd = getXY(e); }
+    drawFrame();
   }, {passive:false});
 
-  function onPointerDown(evt){
-    const p = getXY(evt);
-    if (calibMode){
-      calibClicks.push(p);
-      if (calibClicks.length===2){
-        const dx = calibClicks[1].x - calibClicks[0].x;
-        const dy = calibClicks[1].y - calibClicks[0].y;
-        const dpx = Math.hypot(dx,dy);
-        if (dpx>0){
-          scalePxPerMeter = dpx / 1.0; // 1 m の両端
-          scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1.000 m`;
-          kScale.textContent = scalePxPerMeter.toFixed(2);
-        }
-        calibClicks = []; calibMode = false; btnCalib.disabled = false; drawFrame();
-      } else {
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const p = getXY(e);
+
+    if (calibMode) {
+      // ドラッグ校正の開始
+      if (!calibDragging && calibClicks.length === 0) {
+        calibStart = p;
+        calibEnd = p;
+        calibDragging = true;
         drawFrame();
+        return;
       }
+      // 2点タップ方式にも対応
+      if (calibClicks.length === 0) {
+        calibClicks.push(p);
+      } else if (calibClicks.length === 1) {
+        calibClicks.push(p);
+        finalizeCalibration(calibClicks[0], calibClicks[1]);
+      }
+      drawFrame();
       return;
     }
+
+    // 原点設定モード（任意・現状UIでは非表示）
     if (setOriginMode){
       const xm = toMetersX(p.x);
       const ym = toMetersY(p.y);
@@ -289,9 +314,36 @@
       drawFrame();
       return;
     }
-    // record point
+
+    // 通常の1点記録
     recordPoint(p.x, p.y, video.currentTime);
     if (autoStep.checked) stepFrame(+1);
+  }, {passive:false});
+
+  canvas.addEventListener('pointerup', e => {
+    if (calibMode && calibDragging && calibStart) {
+      calibEnd = getXY(e);
+      finalizeCalibration(calibStart, calibEnd);
+    }
+  }, {passive:false});
+
+  // 校正確定（共通：ドラッグ／タップ×2）
+  function finalizeCalibration(a, b){
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dpx = Math.hypot(dx, dy);
+    if (dpx > 0) {
+      scalePxPerMeter = dpx / 1.0; // 1mのpx
+      scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1.000 m`;
+      kScale.textContent = scalePxPerMeter.toFixed(2);
+    }
+    calibClicks = [];
+    calibMode = false;
+    calibDragging = false;
+    calibStart = null;
+    calibEnd = null;
+    btnCalib.disabled = false;
+    drawFrame();
   }
 
   function toMetersX(xpx){
@@ -306,7 +358,7 @@
   }
   function toMetersY(ypx){
     if (!scalePxPerMeter) return NaN;
-    const ym = -ypx / scalePxPerMeter; // 画面下向きをマイナスに反転（物理の上向き正に合わせる想定ならここで-）
+    const ym = -ypx / scalePxPerMeter; // 上を正にする
     if (origin) return ym - origin.ym;
     if (points.length) {
       const originYm = -points[0].ypx / scalePxPerMeter;
@@ -317,7 +369,6 @@
 
   function recordPoint(xpx, ypx, t){
     if (scalePxPerMeter==null){ alert('先に「1 m 校正」を行ってください。'); return; }
-    // 最初の点で原点を確定
     if (points.length === 0 && !origin) {
       const originXm = xpx / scalePxPerMeter;
       const originYm = -ypx / scalePxPerMeter;
@@ -353,7 +404,7 @@
     updateMainChart(t,x,y,vx,vy,ax,ay);
   }
 
-  // ★ 縦軸が必ず0を含むように min/max を調整して反映
+  // 縦軸に必ず0を含める
   function updateMainChart(t,x,y,vx,vy,ax,ay){
     let data=[], ylabel='';
     switch(mode){
@@ -369,12 +420,9 @@
     ch.options.scales.y.title.text = ylabel;
     ch.data.datasets[0].data = data;
 
-    // 0 を必ず含むように範囲を決定
     if (Array.isArray(data) && data.length){
       let dmin = Infinity, dmax = -Infinity;
-      for (const v of data){
-        if (Number.isFinite(v)){ if (v<dmin) dmin=v; if (v>dmax) dmax=v; }
-      }
+      for (const v of data){ if (Number.isFinite(v)){ dmin = Math.min(dmin,v); dmax = Math.max(dmax,v); } }
       if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin=-1; dmax=1; }
       let lo = Math.min(0, dmin);
       let hi = Math.max(0, dmax);
@@ -383,11 +431,9 @@
       } else {
         const pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
       }
-      // 固定範囲（0 を含むことを保証）
       ch.options.scales.y.min = lo;
       ch.options.scales.y.max = hi;
     } else {
-      // データなしのときのデフォルト
       ch.options.scales.y.min = -1;
       ch.options.scales.y.max = 1;
     }
@@ -439,10 +485,35 @@
     else { video.pause(); playing=false; btnPlay.textContent='再生/一時停止'; }
   };
 
-  btnCalib.onclick = ()=>{ calibMode = true; calibClicks = []; btnCalib.disabled = true; scaleInfo.textContent='1 m の両端を2回クリック'; };
-  btnSetOrigin.onclick = ()=>{ /* 旧原点設定ボタンは未使用 */ }; btnSetOrigin.disabled = true;
-  btnUndo.onclick = ()=>{ if(points.length){ points.pop(); kPoints.textContent = points.length; recompute(); drawFrame(); } };
-  btnClear.onclick = ()=>{ if(confirm('記録をすべて消去しますか？')){ points=[]; origin=null; calibClicks=[]; setOriginMode=false; calibMode=false; kPoints.textContent='0'; kTime.textContent='0.000'; originInfo.textContent='原点: 初期点'; scaleInfo.textContent='未校正'; kScale.textContent='—'; drawFrame(); recompute(); } };
+  btnCalib.onclick = ()=>{
+    calibMode = true;
+    calibClicks = [];       // タップ×2用
+    calibDragging = false;  // ドラッグは pointerdown で開始
+    calibStart = null;
+    calibEnd = null;
+    btnCalib.disabled = true;
+    scaleInfo.textContent='1 m の両端を指定（ドラッグ または 2点タップ）';
+  };
+
+  btnSetOrigin.onclick = ()=>{ /* 任意原点UIを使う場合に有効化 */ }; btnSetOrigin.disabled = true;
+
+  btnUndo.onclick = ()=>{
+    if(points.length){
+      points.pop();
+      kPoints.textContent = points.length;
+      recompute(); drawFrame();
+    }
+  };
+
+  btnClear.onclick = ()=>{
+    if(confirm('記録をすべて消去しますか？')){
+      points=[]; origin=null; calibClicks=[]; setOriginMode=false; calibMode=false;
+      calibDragging=false; calibStart=null; calibEnd=null;
+      kPoints.textContent='0'; kTime.textContent='0.000'; originInfo.textContent='原点: 初期点';
+      scaleInfo.textContent='未校正'; kScale.textContent='—';
+      drawFrame(); recompute();
+    }
+  };
 
   // File loading
   file.addEventListener('change', async (e)=>{
@@ -452,12 +523,8 @@
   });
 
   btnDemo.onclick = async ()=>{
-    // デモ動画用のBase64データが必要です。現在は空なので機能しません。
     const DEMO_MP4_BASE64 = "";
-    if (!DEMO_MP4_BASE64) {
-      alert("デモ動画データが設定されていません。");
-      return;
-    }
+    if (!DEMO_MP4_BASE64) { alert("デモ動画データが設定されていません。"); return; }
     const demoUrl = "data:video/mp4;base64," + DEMO_MP4_BASE64;
     await loadVideo(demoUrl);
   };
@@ -476,8 +543,9 @@
 
   function resetAll(){
     points=[]; origin=null; scalePxPerMeter=null; calibClicks=[]; calibMode=false; setOriginMode=false;
+    calibDragging=false; calibStart=null; calibEnd=null;
     kPoints.textContent='0'; kTime.textContent='0.000'; kScale.textContent='—'; scaleInfo.textContent='未校正'; originInfo.textContent='原点: 初期点';
-    if (charts && charts.ch){ charts.ch.data.labels=[]; charts.ch.data.datasets[0].data=[]; charts.ch.update(); }
+    ch.data.labels=[]; ch.data.datasets[0].data=[]; ch.update();
     recompute();
   }
 
@@ -512,10 +580,7 @@
   }
 
   btnCSV.onclick = ()=>{
-    if (points.length === 0) {
-      alert("記録されたデータがありません。");
-      return;
-    }
+    if (points.length === 0) { alert("記録されたデータがありません。"); return; }
     const t = points.map(p=>p.t);
     const x = points.map(p=>p.xm);
     const y = points.map(p=>p.ym);
@@ -527,27 +592,27 @@
     const rows = [header.join(',')];
     for (let i=0;i<points.length;i++){
       const row = [i, t[i]?.toFixed(6), points[i].xpx.toFixed(2), points[i].ypx.toFixed(2), x[i]?.toFixed(6), y[i]?.toFixed(6), (vx[i]??NaN).toFixed(6), (vy[i]??NaN).toFixed(6), (ax[i]??NaN).toFixed(6), (ay[i]??NaN).toFixed(6)];
-      rows.push(row.join(',')); // ← 改行ではなくカンマ区切り
+      rows.push(row.join(',')); // ← 1行はカンマ区切り
     }
-    const csv = rows.join('\n');
+    const csv = rows.join('\n'); // ← 行ごとに改行
     download('motion_data.csv', new Blob([csv], {type:'text/csv'}));
   };
+
   const btnPNGCurrent = document.getElementById('btnPNGCurrent');
-  if(btnPNGCurrent){ btnPNGCurrent.onclick = ()=>{ const url = ch.toBase64Image(); fetch(url).then(res=>res.blob()).then(b=> download(`graph_${mode}.png`, b)); } }
+  if(btnPNGCurrent){
+    btnPNGCurrent.onclick = ()=>{
+      const url = ch.toBase64Image();
+      fetch(url).then(res=>res.blob()).then(b=> download(`graph_${mode}.png`, b));
+    };
+  }
 
   // グラフモード切り替え
   document.querySelectorAll('.modeBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      mode = btn.dataset.mode;
-      recompute(); // 新しいモードでグラフを再描画
-    });
+    btn.addEventListener('click', () => { mode = btn.dataset.mode; recompute(); });
   });
 
   // Rendering loop while playing
-  function raf(){
-    if (playing) drawFrame();
-    requestAnimationFrame(raf);
-  }
+  function raf(){ if (playing) drawFrame(); requestAnimationFrame(raf); }
   raf();
 
   // Redraw on timeupdate & resize
