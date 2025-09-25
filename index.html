@@ -44,8 +44,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>動画運動解析アプリ</h1>
-  <p class="sub"><br>・1 m 物体でスケール校正 → 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
+  <h1>動画運動解析（手動マーカー・スケール校正・x/y/v/a グラフ）</h1>
+  <p class="sub">・参考: javalab motion shot の学習体験を、ブラウザ/モバイル（iOS含む）で再現。<br>・1 m 物体でスケール校正 → 1コマずつクリックで座標記録 → グラフ自動更新 → 画像/CSV保存。</p>
 
   <div class="grid">
     <div class="card">
@@ -81,7 +81,7 @@
       <div class="sep"></div>
 
       <canvas id="canvas" width="960" height="540"></canvas>
-      <div class="mini hint">操作ヒント：<b>校正</b>を押して 1 m の両端をクリック → 時系列各コマでマーカー位置をクリック（記録後は自動で1コマ進む）。<br>原点は任意（最初の記録点を原点扱い）。</div>
+      <div class="mini hint">操作ヒント：<b>校正</b>を押して 1 m の両端をクリック → 時系列各コマでマーカー位置をクリック（記録後は自動で1コマ進む）。<br>原点は任意（未設定なら最初の記録点を原点扱い）。ピンチズームは端末依存のため、必要に応じて動画を近距離で撮影してください。</div>
 
       <video id="video" playsinline muted preload="metadata" style="display:none"></video>
     </div>
@@ -189,7 +189,7 @@
              ticks: { color:'#e5e7eb' }, grid: { color:'#334155' } },
         y: { title: { display:true, text:'', color:'#e5e7eb' },
              ticks: { color:'#e5e7eb' }, grid: { color:'#334155' },
-             beginAtZero: true // <<< 修正点：Y軸を常に0から開始
+             beginAtZero: true
             }
       },
       plugins: { legend:{display:false} }
@@ -257,7 +257,12 @@
   canvas.addEventListener('mousemove', e=>{ mousePos = getXY(e); drawFrame(); });
   canvas.addEventListener('touchmove', e=>{ mousePos = getXY(e); drawFrame(); });
   canvas.addEventListener('click', onClickCanvas);
-  canvas.addEventListener('touchend', (e)=>{ onClickCanvas(e.changedTouches ? {clientX:e.changedTouches[0].clientX, clientY:e.changedTouches[0].clientY} : e); });
+  
+  canvas.addEventListener('touchend', (e) => {
+    // <<< 修正点: preventDefault() を呼び出して、後続の click イベント発生を防ぐ
+    e.preventDefault(); 
+    onClickCanvas(e.changedTouches ? {clientX:e.changedTouches[0].clientX, clientY:e.changedTouches[0].clientY} : e);
+  });
 
   function onClickCanvas(evt){
     const p = getXY(evt);
