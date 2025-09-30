@@ -143,8 +143,8 @@
 <script>
 (() => {
   // ====== デモ動画の相対パス（方式A）======
-  // リポジトリ内に /assets/demo.mp4 を置いてください
-  const DEMO_URL = "./assets/demo.mp4";
+  // リポジトリ内に /demo.mp4 を置いてください
+  const DEMO_URL = "./demo.mp4";
 
   // DOM refs
   const file = document.getElementById('file');
@@ -516,7 +516,7 @@
       await loadVideo(DEMO_URL);
     } catch (e) {
       console.error(e);
-      alert("デモ動画の読み込みに失敗しました。/assets/demo.mp4 の配置を確認してください。");
+      alert("デモ動画の読み込みに失敗しました。/demo.mp4 の配置を確認してください。");
     }
   };
 
@@ -618,3 +618,4 @@
 </script>
 </body>
 </html>
+
