@@ -39,7 +39,7 @@
 <body>
 <div class="wrap">
   <h1>動画運動解析アプリ</h1>
-  <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定 → 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
+  <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定（任意）→ 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
 
   <div class="grid">
     <div class="card">
@@ -66,7 +66,7 @@
         <button id="btnCalib" class="accent">1 m 校正（ドラッグ）</button>
         <span id="scaleInfo" class="mini">未校正</span>
 
-        <!-- 初期は無効化 -->
+        <!-- 初期は無効化（校正完了で有効化） -->
         <button id="btnAxis" class="accent" disabled>軸の設定</button>
         <button id="btnStartPlot" class="primary" disabled>プロットの開始</button>
 
@@ -142,6 +142,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (() => {
+  // ====== デモ動画の相対パス（方式A）======
+  // リポジトリ内に /assets/demo.mp4 を置いてください
+  const DEMO_URL = "./assets/demo.mp4";
+
   // DOM refs
   const file = document.getElementById('file');
   const video = document.getElementById('video');
@@ -347,7 +351,7 @@
       scalePxPerMeter = dpx / 1.0; // 1mのpx
       scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1.000 m`;
       kScale.textContent = scalePxPerMeter.toFixed(2);
-      // ← ここで「軸の設定」を有効化
+      // 校正が済むまで無効だった「軸の設定」を有効化
       btnAxis.disabled = false;
     }
     calibMode = false; calibDragging = false; calibStart = calibEnd = null;
@@ -490,8 +494,7 @@
     if(confirm('記録をすべて消去しますか？')){
       points=[]; origin=null; calibMode=false; calibDragging=false; calibStart=calibEnd=null;
       axisActive=false; axisMode=false;
-      // ← 軸関連ボタンも初期化
-      btnAxis.disabled = true;
+      btnAxis.disabled = true;       // ← 校正が済むまで無効
       btnStartPlot.disabled = true;
 
       kPoints.textContent='0'; kTime.textContent='0.000'; originInfo.textContent='原点: 初期点';
@@ -500,18 +503,21 @@
     }
   };
 
-  // File loading
+  // ファイル読込
   file.addEventListener('change', async (e)=>{
     if (!e.target.files || !e.target.files[0]) return;
     const f = e.target.files[0];
     await loadVideo(URL.createObjectURL(f));
   });
 
+  // ★デモ動画（方式A：相対パス）
   btnDemo.onclick = async ()=>{
-    const DEMO_MP4_BASE64 = "";
-    if (!DEMO_MP4_BASE64) { alert("デモ動画データが設定されていません。"); return; }
-    const demoUrl = "data:video/mp4;base64," + DEMO_MP4_BASE64;
-    await loadVideo(demoUrl);
+    try {
+      await loadVideo(DEMO_URL);
+    } catch (e) {
+      console.error(e);
+      alert("デモ動画の読み込みに失敗しました。/assets/demo.mp4 の配置を確認してください。");
+    }
   };
 
   async function loadVideo(url){
@@ -530,7 +536,7 @@
     points=[]; origin=null; scalePxPerMeter=null; calibMode=false; calibDragging=false; calibStart=calibEnd=null;
     axisActive=false; axisMode=false; 
     axis.theta=0; // 原点はresize時に中央へ
-    // ← 校正が済むまで軸の設定は無効
+    // 校正が済むまで軸の設定は無効
     btnAxis.disabled = true;
     btnStartPlot.disabled = true;
 
