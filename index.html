@@ -66,7 +66,6 @@
         <button id="btnCalib" class="accent">1 m 校正（ドラッグ）</button>
         <span id="scaleInfo" class="mini">未校正</span>
 
-        <!-- 初期は無効化（校正完了で有効化） -->
         <button id="btnAxis" class="accent" disabled>軸の設定</button>
         <button id="btnStartPlot" class="primary" disabled>プロットの開始</button>
 
@@ -80,7 +79,7 @@
       <canvas id="canvas" width="960" height="540"></canvas>
       <div class="mini hint">
         操作ヒント：<b>校正</b>後、必要なら<b>軸の設定</b>でx軸・y軸をドラッグで移動／回転（原点ハンドル＝中心丸、角度ハンドル＝x軸上の丸）。<br>
-        「プロットの開始」で通常どおりクリック記録（記録後は自動で1コマ進む）。
+        「プロットの開始」でクリック記録（クリック後は自動で1コマ進む）。
       </div>
 
       <video id="video" playsinline muted preload="metadata" style="display:none"></video>
@@ -143,7 +142,6 @@
 <script>
 (() => {
   // ====== デモ動画の相対パス（方式A）======
-  // リポジトリ内に /demo.mp4 を置いてください
   const DEMO_URL = "./demo_faststart.mp4";
 
   // DOM refs
@@ -170,12 +168,17 @@
   const btnAxis = document.getElementById('btnAxis');
   const btnStartPlot = document.getElementById('btnStartPlot');
 
-  // State
+  // ===== State =====
   let points = []; // {t, xpx, ypx, xm, ym}
   let origin = null; // {xm, ym}
   let scalePxPerMeter = null; // pixels per meter
   let calibMode = false;
   let playing = false;
+
+  // ★フレーム制御（FIXの核心）
+  let userFPS = 30;           // 入力/推定されたFPS（常にこの値で1コマ=1/userFPS 秒と定義）
+  let frameIndex = 0;         // 現在のフレーム番号（丸め誤差を避けるため導入）
+  let fpsManuallyEdited = false; // ユーザーが手入力したら推定で上書きしない
 
   // 校正ドラッグ用
   let calibStart = null, calibEnd = null, calibDragging = false;
@@ -332,7 +335,8 @@
       drawFrame(); return;
     }
 
-    recordPoint(p.x, p.y, video.currentTime);
+    const nowT = frameIndex / userFPS; // ← 時間の一貫性をフレーム番号から定義
+    recordPoint(p.x, p.y, nowT);
     if (autoStep.checked) stepFrame(+1);
   }, {passive:false});
 
@@ -351,7 +355,6 @@
       scalePxPerMeter = dpx / 1.0; // 1mのpx
       scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1.000 m`;
       kScale.textContent = scalePxPerMeter.toFixed(2);
-      // 校正が済むまで無効だった「軸の設定」を有効化
       btnAxis.disabled = false;
     }
     calibMode = false; calibDragging = false; calibStart = calibEnd = null;
@@ -439,17 +442,30 @@
     return dy;
   }
 
-  // Video control
-  function stepFrame(dir){
-    const fps = clampFPS(+fpsInput.value);
-    kFPS.textContent = fps.toFixed(2);
-    const dt = 1.0/Math.max(1, fps);
-    video.pause(); playing=false; btnPlay.textContent = '再生/一時停止';
-    const target = clamp(video.currentTime + dir*dt, 0, (video.duration||0));
-    return seekTo(target);
+  // ===== Video control（フレーム単位の厳密ステップ） =====
+  function getUserFPS(){
+    const v = parseFloat(fpsInput.value);
+    if (!Number.isFinite(v) || v<=0) return 30;
+    // 高fps動画のため上限は緩めに
+    return Math.min(1000, Math.max(1, v));
   }
-  function clamp(v,min=0,max=1){ return Math.min(max, Math.max(min, v)); }
-  function clampFPS(v){ if (!isFinite(v) || v<=0) return 30; return Math.min(240, Math.max(1, v)); }
+
+  async function stepFrame(dir){
+    userFPS = getUserFPS();
+    kFPS.textContent = userFPS.toFixed(2);
+
+    // 現在時刻からframeIndexを再評価（外部要因のズレを吸収）
+    frameIndex = Math.round(video.currentTime * userFPS);
+    frameIndex += dir; // 1コマ進む/戻る
+    const target = Math.max(0, Math.min((video.duration||0), frameIndex / userFPS));
+
+    video.pause(); playing=false; btnPlay.textContent = '再生/一時停止';
+    await seekTo(target);
+
+    // seek後にもう一度正規化（端での丸め誤差を吸収）
+    frameIndex = Math.round(video.currentTime * userFPS);
+  }
+
   function seekTo(t){
     return new Promise(res=>{
       const on = ()=>{ video.removeEventListener('seeked', on); drawFrame(); res(); };
@@ -458,9 +474,15 @@
     });
   }
 
+  function clamp(v,min=0,max=1){ return Math.min(max, Math.max(min, v)); }
+
   btnPrev.onclick = ()=> stepFrame(-1);
   btnNext.onclick = ()=> stepFrame(+1);
   btnPlay.onclick = ()=>{ if (!playing){ video.play(); playing=true; btnPlay.textContent='一時停止'; } else { video.pause(); playing=false; btnPlay.textContent='再生/一時停止'; } };
+
+  // FPS入力の手動編集を検知（自動推定の上書きを防止）
+  fpsInput.addEventListener('input', ()=>{ fpsManuallyEdited = true; userFPS = getUserFPS(); kFPS.textContent = userFPS.toFixed(2); });
+  fpsInput.addEventListener('change', ()=>{ fpsManuallyEdited = true; userFPS = getUserFPS(); kFPS.textContent = userFPS.toFixed(2); });
 
   // 1m校正
   btnCalib.onclick = ()=>{
@@ -510,7 +532,7 @@
     await loadVideo(URL.createObjectURL(f));
   });
 
-  // ★デモ動画（方式A：相対パス）
+  // デモ動画
   btnDemo.onclick = async ()=>{
     try {
       await loadVideo(DEMO_URL);
@@ -527,7 +549,14 @@
     video.muted = true;
     await video.load();
     await new Promise(res=> video.addEventListener('loadedmetadata', res, {once:true}));
+
+    // 初期フレーム基準を0に
+    frameIndex = 0;
+    userFPS = getUserFPS();
+
+    // メタデータからのFPS推定（可能な場合のみ／手入力を尊重）
     guessFPS();
+
     resizeCanvasToVideo();
     drawFrame();
   }
@@ -536,7 +565,6 @@
     points=[]; origin=null; scalePxPerMeter=null; calibMode=false; calibDragging=false; calibStart=calibEnd=null;
     axisActive=false; axisMode=false; 
     axis.theta=0; // 原点はresize時に中央へ
-    // 校正が済むまで軸の設定は無効
     btnAxis.disabled = true;
     btnStartPlot.disabled = true;
 
@@ -545,16 +573,33 @@
     recompute();
   }
 
+  // ===== FPSを推定（ブラウザ対応があるときのみ） =====
   function guessFPS(){
+    if (fpsManuallyEdited) { kFPS.textContent = getUserFPS().toFixed(2); return; }
     if ('requestVideoFrameCallback' in HTMLVideoElement.prototype){
       try {
-        let t0=null, t1=null;
+        let t0=null, t1=null, count=0;
         const cb = (_, info)=>{
-          if (!t0){ t0 = info.mediaTime; video.requestVideoFrameCallback(cb); }
-          else if (!t1){ t1 = info.mediaTime; const fps = 1/Math.max(1e-6, (t1-t0)); if (fps>5 && fps<240){ fpsInput.value = fps.toFixed(2); kFPS.textContent=fps.toFixed(2);} }
+          count++;
+          if (t0===null){ t0 = info.mediaTime; }
+          else if (t1===null){ t1 = info.mediaTime; }
+          if (t0!==null && t1!==null){
+            const est = 1/Math.max(1e-6, (t1-t0));
+            if (est>5 && est<1000 && !fpsManuallyEdited){
+              userFPS = est;
+              fpsInput.value = est.toFixed(2);
+              kFPS.textContent = est.toFixed(2);
+            }
+            return; // 2フレーム分で十分
+          }
+          if (count<5) video.requestVideoFrameCallback(cb);
         };
         video.requestVideoFrameCallback(cb);
       } catch(e){}
+    } else {
+      // 推定不可：手入力値を尊重
+      userFPS = getUserFPS();
+      kFPS.textContent = userFPS.toFixed(2);
     }
   }
 
@@ -611,12 +656,15 @@
   function raf(){ if (playing) drawFrame(); requestAnimationFrame(raf); }
   raf();
 
-  // Redraw on timeupdate & resize
-  video.addEventListener('timeupdate', drawFrame);
+  // 再生中に時刻が進むときもframeIndexを追従（精度維持）
+  video.addEventListener('timeupdate', () => {
+    if (!Number.isFinite(userFPS) || userFPS<=0) return;
+    frameIndex = Math.round(video.currentTime * userFPS);
+    drawFrame();
+  });
+
   window.addEventListener('resize', ()=>{ if (video.videoWidth) resizeCanvasToVideo(); });
 })();
 </script>
 </body>
 </html>
-
-
