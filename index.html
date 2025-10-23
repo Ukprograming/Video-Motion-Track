@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>動画運動解析（ブラウザ/iOS対応・手動トラッキング）</title>
+<title>動画運動解析（ブラウザ/iOS対応・手動トラッキング）— 修正版</title>
 <link rel="icon" href="data:,">
 <style>
   :root { --gap: 12px; --card: #111827; --ink: #e5e7eb; --muted:#9ca3af; --accent:#22c55e; --danger:#ef4444; --warn:#f59e0b; --sky:#38bdf8;}
@@ -38,7 +38,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>動画運動解析アプリ</h1>
+  <h1>動画運動解析アプリ（修正版）</h1>
   <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定（任意）→ 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
 
   <div class="grid">
@@ -54,12 +54,8 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top:6px">
-        <button id="btnPrev">◀︎ 1フレーム</button>
-        <button id="btnNext">1フレーム ▶︎</button>
-        <button id="btnPlay" class="primary">再生/一時停止</button>
-        <div class="pill"><span>FPS</span> <input id="fps" type="number" step="0.01" value="30" style="width:78px"> <span class="mini">（自動取得が不安定な時は手入力）</span></div>
-        <div class="pill"><label><input id="autoStep" type="checkbox" checked> クリック後に自動で1コマ進む</label></div>
+      $1
+        <div class="pill"><label><input id="decodeStep" type="checkbox"> 正確ステップ（デコード）</label></div>
       </div>
 
       <div class="row" style="margin-top:6px">
@@ -79,7 +75,7 @@
       <canvas id="canvas" width="960" height="540"></canvas>
       <div class="mini hint">
         操作ヒント：<b>校正</b>後、必要なら<b>軸の設定</b>でx軸・y軸をドラッグで移動／回転（原点ハンドル＝中心丸、角度ハンドル＝x軸上の丸）。<br>
-        「プロットの開始」でクリック記録（クリック後は自動で1コマ進む）。
+        「プロットの開始」で通常どおりクリック記録（記録後は自動で1コマ進む）。
       </div>
 
       <video id="video" playsinline muted preload="metadata" style="display:none"></video>
@@ -157,6 +153,7 @@
   const btnClear = document.getElementById('btnClear');
   const btnDemo = document.getElementById('btnDemo');
   const fpsInput = document.getElementById('fps');
+  const decodeStep = document.getElementById('decodeStep');
   const autoStep = document.getElementById('autoStep');
   const scaleInfo = document.getElementById('scaleInfo');
   const originInfo = document.getElementById('originInfo');
@@ -176,8 +173,8 @@
   let playing = false;
 
   // ★フレーム制御（FIXの核心）
-  let userFPS = 30;           // 入力/推定されたFPS（常にこの値で1コマ=1/userFPS 秒と定義）
-  let frameIndex = 0;         // 現在のフレーム番号（丸め誤差を避けるため導入）
+  let userFPS = 30;           // 入力/推定されたFPS（1コマ=1/userFPS）
+  let frameIndex = 0;         // 現在のフレーム番号（アプリが唯一の真実とする）
   let fpsManuallyEdited = false; // ユーザーが手入力したら推定で上書きしない
 
   // 校正ドラッグ用
@@ -454,16 +451,52 @@
     userFPS = getUserFPS();
     kFPS.textContent = userFPS.toFixed(2);
 
-    // 現在時刻からframeIndexを再評価（外部要因のズレを吸収）
-    frameIndex = Math.round(video.currentTime * userFPS);
-    frameIndex += dir; // 1コマ進む/戻る
-    const target = Math.max(0, Math.min((video.duration||0), frameIndex / userFPS));
+    const desired = frameIndex + dir;              // 進めたい先のフレーム番号
+    const dt = 1 / userFPS;
+
+    if (decodeStep && decodeStep.checked){
+      await stepByDecoding(dir, dt);
+      frameIndex = Math.max(0, desired);
+      drawFrame();
+      return;
+    }
+
+    // 時間シーク方式：フレーム境界越えを保証するため微小epsilonを付与
+    const eps = dt * 0.45 * (dir>0 ? 1 : -1);
+    const target = Math.max(0, Math.min((video.duration||0), desired * dt + eps));
 
     video.pause(); playing=false; btnPlay.textContent = '再生/一時停止';
     await seekTo(target);
 
-    // seek後にもう一度正規化（端での丸め誤差を吸収）
-    frameIndex = Math.round(video.currentTime * userFPS);
+    // seek後は実際のcurrentTimeに依存せず、意図したframeIndexを採用
+    frameIndex = Math.max(0, desired);
+    drawFrame();
+  }
+
+  async function stepByDecoding(dir, dt){
+    if (dir > 0){
+      // 次フレームが描画されるまで短時間だけ再生して即停止
+      const waitRendered = () => new Promise(resolve => {
+        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype){
+          const once = () => resolve();
+          video.requestVideoFrameCallback(() => once());
+        } else {
+          const on = () => { video.removeEventListener('timeupdate', on); resolve(); };
+          video.addEventListener('timeupdate', on, { once:true });
+        }
+      });
+      video.playbackRate = 0.25;
+      await video.play().catch(()=>{});
+      await waitRendered();
+      video.pause();
+      return;
+    } else {
+      // 後退は再生できないので、前フレーム境界を少し越えない位置へシーク
+      const epsBack = dt * 0.25;
+      const target = Math.max(0, (frameIndex + dir) * dt - epsBack);
+      await seekTo(target);
+      return;
+    }
   }
 
   function seekTo(t){
@@ -657,11 +690,7 @@
   raf();
 
   // 再生中に時刻が進むときもframeIndexを追従（精度維持）
-  video.addEventListener('timeupdate', () => {
-    if (!Number.isFinite(userFPS) || userFPS<=0) return;
-    frameIndex = Math.round(video.currentTime * userFPS);
-    drawFrame();
-  });
+  video.addEventListener('timeupdate', () => { drawFrame(); });
 
   window.addEventListener('resize', ()=>{ if (video.videoWidth) resizeCanvasToVideo(); });
 })();
