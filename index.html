@@ -38,7 +38,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>動画運動解析アプリ（修正版）</h1>
+  <h1>動画運動解析アプリ（修正版２）</h1>
   <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定（任意）→ 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
 
   <div class="grid">
@@ -153,8 +153,8 @@
   const btnClear = document.getElementById('btnClear');
   const btnDemo = document.getElementById('btnDemo');
   const fpsInput = document.getElementById('fps');
-  const decodeStep = document.getElementById('decodeStep');
   const autoStep = document.getElementById('autoStep');
+  const decodeStep = document.getElementById('decodeStep');
   const scaleInfo = document.getElementById('scaleInfo');
   const originInfo = document.getElementById('originInfo');
   const kPoints = document.getElementById('kPoints');
@@ -164,6 +164,14 @@
   const btnCSV = document.getElementById('btnCSV');
   const btnAxis = document.getElementById('btnAxis');
   const btnStartPlot = document.getElementById('btnStartPlot');
+
+  // 安全なイベントバインドのユーティリティ
+  function bind(id, type, handler){
+    const el = typeof id === 'string' ? document.getElementById(id) : id;
+    if (!el) { console.warn(`[bind] element not found for`, id); return null; }
+    el.addEventListener(type, handler);
+    return el;
+  }
 
   // ===== State =====
   let points = []; // {t, xpx, ypx, xm, ym}
@@ -509,45 +517,67 @@
 
   function clamp(v,min=0,max=1){ return Math.min(max, Math.max(min, v)); }
 
-  btnPrev.onclick = ()=> stepFrame(-1);
-  btnNext.onclick = ()=> stepFrame(+1);
-  btnPlay.onclick = ()=>{ if (!playing){ video.play(); playing=true; btnPlay.textContent='一時停止'; } else { video.pause(); playing=false; btnPlay.textContent='再生/一時停止'; } };
+  bind('btnPrev','click', ()=> stepFrame(-1));
+  bind('btnNext','click', ()=> stepFrame(+1));
+  bind('btnPlay','click', ()=>{ if (!playing){ video.play(); playing=true; btnPlay.textContent='一時停止'; } else { video.pause(); playing=false; btnPlay.textContent='再生/一時停止'; } }); playing=true; btnPlay.textContent='一時停止'; } else { video.pause(); playing=false; btnPlay.textContent='再生/一時停止'; } };
 
   // FPS入力の手動編集を検知（自動推定の上書きを防止）
   fpsInput.addEventListener('input', ()=>{ fpsManuallyEdited = true; userFPS = getUserFPS(); kFPS.textContent = userFPS.toFixed(2); });
   fpsInput.addEventListener('change', ()=>{ fpsManuallyEdited = true; userFPS = getUserFPS(); kFPS.textContent = userFPS.toFixed(2); });
 
   // 1m校正
-  btnCalib.onclick = ()=>{
+  bind('btnCalib','click', ()=>{
     calibMode = true; calibDragging = false; calibStart = calibEnd = null;
+    btnCalib.disabled = true; scaleInfo.textContent='1 m の両端をドラッグして指定';
+  }); calibDragging = false; calibStart = calibEnd = null;
     btnCalib.disabled = true; scaleInfo.textContent='1 m の両端をドラッグして指定';
   };
 
   // 軸の設定 → プロット開始
-  btnAxis.onclick = ()=>{
+  bind('btnAxis','click', ()=>{
     axisMode = true; axisActive = false;
     btnStartPlot.disabled = false;
     drawFrame();
+  }); axisActive = false;
+    btnStartPlot.disabled = false;
+    drawFrame();
   };
-  btnStartPlot.onclick = ()=>{
+  bind('btnStartPlot','click', ()=>{
     axisMode = false; axisActive = true;
+    btnStartPlot.disabled = true;
+    drawFrame();
+  }); axisActive = true;
     btnStartPlot.disabled = true;
     drawFrame();
   };
 
   // 一つ戻す（動画も1コマ戻す）
-  btnUndo.onclick = async ()=>{
+  bind('btnUndo','click', async ()=>{
     if(points.length){
       points.pop();
       kPoints.textContent = points.length;
       recompute();
       await stepFrame(-1);
     }
+  });
+      kPoints.textContent = points.length;
+      recompute();
+      await stepFrame(-1);
+    }
   };
 
-  btnClear.onclick = ()=>{
+  bind('btnClear','click', ()=>{
     if(confirm('記録をすべて消去しますか？')){
       points=[]; origin=null; calibMode=false; calibDragging=false; calibStart=calibEnd=null;
+      axisActive=false; axisMode=false;
+      btnAxis.disabled = true;       // ← 校正が済むまで無効
+      btnStartPlot.disabled = true;
+
+      kPoints.textContent='0'; kTime.textContent='0.000'; originInfo.textContent='原点: 初期点';
+      scaleInfo.textContent='未校正'; kScale.textContent='—';
+      drawFrame(); recompute();
+    }
+  }); origin=null; calibMode=false; calibDragging=false; calibStart=calibEnd=null;
       axisActive=false; axisMode=false;
       btnAxis.disabled = true;       // ← 校正が済むまで無効
       btnStartPlot.disabled = true;
@@ -566,9 +596,14 @@
   });
 
   // デモ動画
-  btnDemo.onclick = async ()=>{
+  bind('btnDemo','click', async ()=>{
     try {
       await loadVideo(DEMO_URL);
+    } catch (e) {
+      console.error(e);
+      alert("デモ動画の読み込みに失敗しました。/demo.mp4 の配置を確認してください。");
+    }
+  });
     } catch (e) {
       console.error(e);
       alert("デモ動画の読み込みに失敗しました。/demo.mp4 の配置を確認してください。");
@@ -653,8 +688,24 @@
     setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
   }
 
-  btnCSV.onclick = ()=>{
+  bind('btnCSV','click', ()=>{
     if (points.length === 0) { alert("記録されたデータがありません。"); return; }
+    const t = points.map(p=>p.t);
+    const x = points.map(p=>p.xm);
+    const y = points.map(p=>p.ym);
+    const vx = diffCentral(t,x);
+    const vy = diffCentral(t,y);
+    const ax = diffCentral(t,vx);
+    const ay = diffCentral(t,vy);
+    const header = ['frame','t_s','x_px','y_px','x_m','y_m','vx_m_s','vy_m_s','ax_m_s2','ay_m_s2'];
+    const rows = [header.join(',')];
+    for (let i=0;i<points.length;i++){
+      const row = [i, t[i]?.toFixed(6), points[i].xpx.toFixed(2), points[i].ypx.toFixed(2), x[i]?.toFixed(6), y[i]?.toFixed(6), (vx[i]??NaN).toFixed(6), (vy[i]??NaN).toFixed(6), (ax[i]??NaN).toFixed(6), (ay[i]??NaN).toFixed(6)];
+      rows.push(row.join(','));
+    }
+    const csv = rows.join('\n');
+    download('motion_data.csv', new Blob([csv], {type:'text/csv'}));
+  }); return; }
     const t = points.map(p=>p.t);
     const x = points.map(p=>p.xm);
     const y = points.map(p=>p.ym);
