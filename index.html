@@ -182,6 +182,23 @@
         table td:first-child {
             text-align: center
         }
+
+        /* グラフ上のカーソル（縦線） */
+        #time-cursor {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: rgba(255, 0, 0, 0.8);
+            /* 赤色、少し透明 */
+            pointer-events: none;
+            /* マウス操作を邪魔しない */
+            display: none;
+            /* 最初は非表示 */
+            z-index: 10;
+            transition: left 0.05s linear;
+            /* 滑らかに動かす */
+        }
     </style>
 </head>
 
@@ -283,8 +300,9 @@
                     <span class="pill">現在: <span id="modeLabel">x-t</span></span>
                 </div>
                 <div id="rightPane" style="display:grid; grid-template-rows: 260px 1fr; gap:8px; height:420px">
-                    <div id="chartBox" style="height:260px; overflow:hidden">
+                    <div id="chartBox" style="height:260px; overflow:hidden; position: relative;">
                         <canvas id="chart_main" style="width:100%; height:100%"></canvas>
+                        <div id="time-cursor"></div>
                     </div>
                     <div class="card" style="overflow:auto;">
                         <table id="dataTable" style="width:100%; border-collapse:collapse; font-size:12px">
@@ -364,7 +382,13 @@
                 options: {
                     animation: false, responsive: true, maintainAspectRatio: false,
                     scales: {
-                        x: { title: { display: true, text: 't [s]', color: '#e5e7eb' }, ticks: { color: '#e5e7eb' }, grid: { color: '#334155' } },
+                        x: {
+                            type: 'linear', // ★ここが重要：時間を数値として扱う
+                            min: 0,         // 常に0秒から開始
+                            title: { display: true, text: 't [s]', color: '#e5e7eb' },
+                            ticks: { color: '#e5e7eb' },
+                            grid: { color: '#334155' }
+                        },
                         y: { title: { display: true, text: '', color: '#e5e7eb' }, ticks: { color: '#e5e7eb' }, grid: { color: '#334155' } }
                     },
                     plugins: { legend: { display: false } }
@@ -583,6 +607,8 @@
 
             function updateMainChart(t, x, y, vx, vy, ax, ay) {
                 let data = [], ylabel = '';
+
+                // 表示モードに合わせてデータを決定
                 switch (mode) {
                     case 'xt': data = x; ylabel = 'x [m]'; break;
                     case 'yt': data = y; ylabel = 'y [m]'; break;
@@ -591,11 +617,29 @@
                     case 'axt': data = ax; ylabel = 'ax [m/s²]'; break;
                     case 'ayt': data = ay; ylabel = 'ay [m/s²]'; break;
                 }
-                ch.data.labels = t.map(s => (+s).toFixed(3));
-                ch.data.datasets[0].label = mode.toUpperCase();
-                ch.options.scales.y.title.text = ylabel;
-                ch.data.datasets[0].data = data;
 
+                // ▼▼▼ 修正：データを {x:時間, y:値} の形式に変換して渡す ▼▼▼
+                // データが存在する場合のみマッピング処理を行う
+                if (t && t.length > 0 && data && data.length > 0) {
+                    const scatterData = t.map((timeVal, i) => ({
+                        x: timeVal,
+                        y: data[i]
+                    }));
+                    ch.data.datasets[0].data = scatterData;
+                } else {
+                    ch.data.datasets[0].data = [];
+                }
+
+                // ラベル配列は使わないので空にする（リニア軸の場合は不要）
+                ch.data.labels = [];
+
+                // データセットのラベル更新
+                ch.data.datasets[0].label = mode.toUpperCase();
+
+                // Y軸ラベルの更新
+                ch.options.scales.y.title.text = ylabel;
+
+                // Y軸の範囲調整（以前のコードのまま）
                 if (Array.isArray(data) && data.length) {
                     let dmin = Infinity, dmax = -Infinity;
                     for (const v of data) { if (Number.isFinite(v)) { dmin = Math.min(dmin, v); dmax = Math.max(dmax, v); } }
@@ -607,10 +651,11 @@
                 } else { ch.options.scales.y.min = -1; ch.options.scales.y.max = 1; }
 
                 ch.update();
+
+                // モード表示の更新
                 const ml = document.getElementById('modeLabel');
                 if (ml) ml.textContent = ({ xt: 'x-t', yt: 'y-t', vxt: 'vx-t', vyt: 'vy-t', axt: 'ax-t', ayt: 'ay-t' })[mode] || mode;
             }
-
             function diffCentral(t, y) {
                 if (t.length < 2) return t.map(() => NaN);
                 const n = t.length; const dy = new Array(n).fill(NaN);
@@ -807,6 +852,98 @@
                 }
                 tb.innerHTML = html;
             }
+
+            // ▼▼▼ ここから追加：グラフと動画の連動機能 ▼▼▼
+
+            const cursor = document.getElementById('time-cursor');
+            const chartBox = document.getElementById('chartBox');
+            let isDraggingGraph = false;
+
+            // 1. 動画が進んだら、グラフ上の線を動かす
+            video.addEventListener('timeupdate', updateCursorFromVideo);
+
+            function updateCursorFromVideo() {
+                // ドラッグ中は更新しない（カクつき防止）
+                if (isDraggingGraph) return;
+
+                // データがない、またはChartの準備ができていない場合は非表示
+                if (!points.length || !ch.scales.x) {
+                    cursor.style.display = 'none';
+                    return;
+                }
+
+                const currentTime = video.currentTime;
+                const chartArea = ch.chartArea;
+
+                // 時間をグラフ上のピクセル位置(X)に変換
+                // Chart.jsの機能を使います
+                const x = ch.scales.x.getPixelForValue(currentTime);
+
+                // グラフの描画エリア（左右の軸の内側）に収まっているか判定
+                if (x >= chartArea.left && x <= chartArea.right) {
+                    cursor.style.display = 'block';
+                    cursor.style.left = `${x}px`;
+                    // 線の高さをグラフ描画エリアに合わせる（下の軸文字に被らないように調整）
+                    cursor.style.top = `${chartArea.top}px`;
+                    cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
+                } else {
+                    cursor.style.display = 'none'; // 範囲外なら隠す
+                }
+            }
+
+            // 2. グラフ上の操作で動画を動かす（ドラッグ＆クリック）
+            chartBox.addEventListener('pointerdown', (e) => {
+                // データがない場合は何もしない
+                if (!points.length) return;
+
+                isDraggingGraph = true;
+                e.preventDefault(); // テキスト選択などを防止
+                syncVideoToGraphMouse(e);
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (isDraggingGraph) {
+                    syncVideoToGraphMouse(e);
+                }
+            });
+
+            window.addEventListener('pointerup', () => {
+                if (isDraggingGraph) {
+                    isDraggingGraph = false;
+                    // ドラッグ終了時に、念のため正しい位置に線を同期
+                    updateCursorFromVideo();
+                }
+            });
+
+            // マウス位置から時間を計算して動画をシーク
+            function syncVideoToGraphMouse(e) {
+                // Chart.jsのスケール情報がない場合は中止
+                if (!ch.scales.x) return;
+
+                const rect = chartBox.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+
+                // X座標(px)を時間(t)に逆変換
+                let targetTime = ch.scales.x.getValueForPixel(mouseX);
+
+                // 動画の範囲内に収める
+                targetTime = Math.max(0, Math.min(targetTime, video.duration || 0));
+
+                // 1. 縦線を即座に動かす（体感速度向上）
+                cursor.style.display = 'block';
+                cursor.style.left = `${mouseX}px`;
+                const chartArea = ch.chartArea;
+                if (chartArea) {
+                    cursor.style.top = `${chartArea.top}px`;
+                    cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
+                }
+
+                // 2. 動画を指定時間へ移動
+                // seekToは重い処理（再描画含む）なので、ドラッグ中は描画が遅れる可能性がありますが、
+                // 前回の修正で seekTo 内で drawFrame しているのでコマは更新されます。
+                seekTo(targetTime);
+            }
+            // ▲▲▲ 追加ここまで ▲▲▲
         })();
     </script>
 </body>
