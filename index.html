@@ -510,6 +510,7 @@
 
             canvas.addEventListener('pointerdown', async e => {
                 e.preventDefault();
+                if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
                 const p = getXY(e);
 
                 if (axisMode) {
@@ -540,6 +541,9 @@
             }, { passive: false });
 
             canvas.addEventListener('pointerup', e => {
+                if (canvas.releasePointerCapture) {
+                    try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
+                }
                 if (calibMode && calibDragging && calibStart) {
                     calibEnd = getXY(e);
                     finalizeCalibration(calibStart, calibEnd);
@@ -688,23 +692,25 @@
 
             function seekTo(t) {
                 return new Promise(res => {
-                    // 1. シークが完了したときに実行する処理を定義
                     const onSeeked = () => {
-                        // イベントリスナーを解除（1回だけ実行したいので）
-                        video.removeEventListener('seeked', onSeeked);
-
-                        // 2. 確実に描画を実行
+                        clearTimeout(timer);
                         drawFrame();
-
-                        // 3. 念のため、ブラウザの描画サイクルの次フレームでも再描画
-                        // (一部の環境で描画が間に合わないのを防ぐ「ダメ押し」です)
                         requestAnimationFrame(() => {
                             drawFrame();
                             res();
                         });
                     };
 
-                    // 動画の時間を指定
+                    // ★重要：iPad Safariでも確実に拾えるよう once で登録
+                    video.addEventListener('seeked', onSeeked, { once: true });
+
+                    // ★保険：seeked が来ないケースに備える（300ms程度）
+                    const timer = setTimeout(() => {
+                        // それでも描画だけはして返す
+                        drawFrame();
+                        res();
+                    }, 300);
+
                     video.currentTime = t;
                 });
             }
@@ -808,7 +814,7 @@
                 video.src = url;
                 video.playsInline = true;
                 video.muted = true;
-                await video.load();
+                video.load();
                 await new Promise(res => video.addEventListener('loadedmetadata', res, { once: true }));
                 guessFPS();
                 resizeCanvasToVideo();
@@ -854,9 +860,12 @@
             const cursor = document.getElementById('time-cursor');
             const chartBox = document.getElementById('chartBox');
             let isDraggingGraph = false;
+            let pendingSeek = null;
+            let seekScheduled = false;
 
-            // 1. 動画が進んだら、グラフ上の線を動かす
-            video.addEventListener('timeupdate', updateCursorFromVideo);
+            video.addEventListener('timeupdate', () => {
+                if (video.paused) updateCursorFromVideo();
+            });
 
             function updateCursorFromVideo() {
                 // ドラッグ中は更新しない（カクつき防止）
@@ -894,6 +903,7 @@
 
                 isDraggingGraph = true;
                 e.preventDefault(); // テキスト選択などを防止
+                if (chartBox.setPointerCapture) chartBox.setPointerCapture(e.pointerId);
                 syncVideoToGraphMouse(e);
             });
 
@@ -906,6 +916,9 @@
             window.addEventListener('pointerup', () => {
                 if (isDraggingGraph) {
                     isDraggingGraph = false;
+                    if (chartBox.releasePointerCapture && e?.pointerId != null) {
+                        try { chartBox.releasePointerCapture(e.pointerId); } catch (_) { }
+                    }
                     // ドラッグ終了時に、念のため正しい位置に線を同期
                     updateCursorFromVideo();
                 }
@@ -934,10 +947,19 @@
                     cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
                 }
 
-                // 2. 動画を指定時間へ移動
-                // seekToは重い処理（再描画含む）なので、ドラッグ中は描画が遅れる可能性がありますが、
-                // 前回の修正で seekTo 内で drawFrame しているのでコマは更新されます。
-                seekTo(targetTime);
+                // ★iPad Safari対策：seek連打を間引き（最新値のみ反映）
+                pendingSeek = targetTime;
+                if (!seekScheduled) {
+                    seekScheduled = true;
+                    requestAnimationFrame(() => {
+                        seekScheduled = false;
+                        if (pendingSeek != null) {
+                            const t = pendingSeek;
+                            pendingSeek = null;
+                            seekTo(t);
+                        }
+                    });
+                }
             }
 
             // ▼▼▼ ここから：スムーズな再生のための追加コード ▼▼▼
