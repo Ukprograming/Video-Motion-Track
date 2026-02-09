@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>動画運動解析（Windows対応改良版）</title>
+    <title>動画運動解析</title>
     <link rel="icon" href="data:,">
     <style>
         :root {
@@ -204,7 +204,7 @@
 
 <body>
     <div class="wrap">
-        <h1>動画運動解析アプリ <span class="mini" style="font-weight:normal">(Win対応版)</span></h1>
+        <h1>動画運動解析アプリ <span class="mini" style="font-weight:normal"></span></h1>
         <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定（任意）→ 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
 
         <div class="grid">
@@ -446,8 +446,7 @@
                 const w = canvas.width / dpr();
                 const h = canvas.height / dpr();
 
-                // ★修正: 動画の準備ができていない時は、画面を更新せず(前の絵を残して)中断する
-                if (isNaN(video.duration) || video.readyState < 2) {
+                if (isNaN(video.duration)) {
                     return;
                 }
 
@@ -705,9 +704,6 @@
                         });
                     };
 
-                    // イベントをセットしてから時間を変更
-                    video.addEventListener('seeked', onSeeked);
-
                     // 動画の時間を指定
                     video.currentTime = t;
                 });
@@ -943,7 +939,56 @@
                 // 前回の修正で seekTo 内で drawFrame しているのでコマは更新されます。
                 seekTo(targetTime);
             }
-            // ▲▲▲ 追加ここまで ▲▲▲
+
+            // ▼▼▼ ここから：スムーズな再生のための追加コード ▼▼▼
+
+            // 再生中、常に画面とグラフを更新し続けるループ関数
+            function renderLoop() {
+                if (video.paused || video.ended) return; // 停止中はループ終了
+
+                drawFrame();            // Canvas（動画と点）の描画
+                updateCursorFromVideo(); // グラフの赤線の移動
+
+                requestAnimationFrame(renderLoop); // 次のコマの描画を予約（ここが重要）
+            }
+
+
+            // ▼▼▼ 追加：コマ送りやスライダー操作の瞬間に画面を更新する ▼▼▼
+            video.addEventListener('seeked', () => {
+                // 動画が停止している時だけ、ここで手動更新する
+                // (再生中は renderLoop が描画しているので、ここで描く必要はない)
+                if (video.paused) {
+                    drawFrame();            // 動画と点の描画
+                    updateCursorFromVideo(); // グラフの赤線の移動
+                }
+            });
+
+            // 動画が「再生」されたらループを開始
+            video.addEventListener('play', () => {
+                playing = true;
+                btnPlay.textContent = '一時停止';
+                renderLoop(); // ★ループ開始！
+            });
+
+            // 動画が「停止」したらボタンの表示を戻す
+            video.addEventListener('pause', () => {
+                playing = false;
+                btnPlay.textContent = '再生/一時停止';
+                // 停止時にも念のため一回描画して位置ズレを防ぐ
+                drawFrame();
+                updateCursorFromVideo();
+            });
+
+            // 再生ボタンの処理をシンプルにする（動画の機能を呼ぶだけにする）
+            btnPlay.onclick = () => {
+                if (video.paused) {
+                    video.play();
+                } else {
+                    video.pause();
+                }
+            };
+
+
         })();
     </script>
 </body>
