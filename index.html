@@ -3,325 +3,463 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>動画運動解析</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>動画運動解析 - Responsive</title>
     <link rel="icon" href="data:,">
     <style>
         :root {
-            --gap: 12px;
-            --card: #111827;
-            --ink: #e5e7eb;
-            --muted: #9ca3af;
-            --accent: #22c55e;
+            --bg-app: #0f172a;
+            --bg-panel: #1e293b;
+            --border: #334155;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --accent: #10b981;
+            --primary: #3b82f6;
             --danger: #ef4444;
             --warn: #f59e0b;
-            --sky: #38bdf8;
+            --radius: 8px;
+            --header-h: 50px;
         }
 
-        html,
-        body {
-            height: 100%
+        * {
+            box-sizing: border-box;
         }
 
         body {
             margin: 0;
-            font-family: system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-            background: #0b1220;
-            color: var(--ink);
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg-app);
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        .wrap {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 16px;
+        /* --- Header --- */
+        header {
+            height: var(--header-h);
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            justify-content: space-between;
+            flex-shrink: 0;
         }
 
         h1 {
-            font-size: clamp(18px, 3vw, 28px);
-            margin: 0 0 8px;
+            font-size: 16px;
+            margin: 0;
+            font-weight: 600;
+            white-space: nowrap;
         }
 
-        p.sub {
-            color: var(--muted);
-            margin: 0 0 16px
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: 1.15fr 1fr;
-            gap: var(--gap)
-        }
-
-        .card {
-            background: var(--card);
-            border: 1px solid #1f2937;
-            border-radius: 14px;
-            padding: 12px;
-        }
-
-        .row {
+        .header-controls {
             display: flex;
             gap: 8px;
-            flex-wrap: wrap;
-            align-items: center
-        }
-
-        .row>* {
-            margin: 4px 0
-        }
-
-        label {
-            font-size: 12px;
-            color: var(--muted)
-        }
-
-        input[type="number"],
-        input[type="text"],
-        input[type="file"],
-        select,
-        button {
-            background: #0f172a;
-            color: var(--ink);
-            border: 1px solid #374151;
-            border-radius: 10px;
-            padding: 8px 10px;
-            font-size: 14px
-        }
-
-        button {
-            cursor: pointer
-        }
-
-        button.primary {
-            background: #0b2b17;
-            border-color: #134e32
-        }
-
-        button.accent {
-            background: #0d2918;
-            border-color: #14532d;
-            color: #a7f3d0
-        }
-
-        button.warn {
-            background: #2b1f0b;
-            border-color: #78350f;
-            color: #fde68a
-        }
-
-        button.danger {
-            background: #2b0b0b;
-            border-color: #7f1d1d;
-            color: #fecaca
-        }
-
-        button:disabled {
-            opacity: .5;
-            cursor: not-allowed
-        }
-
-        .pill {
-            display: inline-flex;
-            gap: 6px;
             align-items: center;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: #0f172a;
-            border: 1px solid #374151;
-            font-size: 12px;
-            color: var(--muted)
+        }
+
+        /* --- Main Layout --- */
+        .app-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* --- Left Panel (Video) --- */
+        .video-panel {
+            display: flex;
+            flex-direction: column;
+            background: #000;
+            position: relative;
+            overflow: hidden;
+            border-right: 1px solid var(--border);
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            overflow: hidden;
+            position: relative;
         }
 
         canvas {
-            width: 100%;
-            height: auto;
-            background: #000;
-            border-radius: 12px;
-            touch-action: none
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            touch-action: none;
         }
 
-        .mini {
-            font-size: 12px;
-            color: var(--muted)
+        /* Video Toolbar */
+        .toolbar {
+            background: var(--bg-panel);
+            padding: 8px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
         }
 
-        .kpi {
+        .tool-group {
+            display: flex;
+            gap: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: var(--radius);
+        }
+
+        /* --- Right Panel (Data) --- */
+        .data-panel {
+            background: var(--bg-app);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            border-left: 1px solid var(--border);
+            padding: 12px;
+            gap: 12px;
+        }
+
+        /* KPI Cards */
+        .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin: 8px 0 0
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
         }
 
-        .kpi .card {
-            padding: 10px
+        .kpi-card {
+            background: var(--bg-panel);
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
         }
 
-        .kpi .val {
+        .kpi-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .kpi-val {
+            font-size: 16px;
             font-weight: 700;
-            font-size: 18px
+            font-feature-settings: "tnum";
         }
 
-        .sep {
-            height: 1px;
-            background: #1f2937;
-            margin: 8px 0
+        /* Chart Section */
+        .chart-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-height: 250px;
+            flex: 1;
         }
 
-        .hint {
-            color: #a5b4fc
+        .chart-controls {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding-bottom: 4px;
         }
 
-        table th,
-        table td {
-            border-bottom: 1px solid #1f2937;
-            padding: 4px 6px;
-            text-align: right
+        .chart-container {
+            position: relative;
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            min-height: 200px;
         }
 
-        table th:first-child,
-        table td:first-child {
-            text-align: center
+        /* Table Section */
+        .table-section {
+            height: 200px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: auto;
+            font-size: 12px;
         }
 
-        /* グラフ上のカーソル（縦線） */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 4px 8px;
+            text-align: right;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: #111;
+            z-index: 1;
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        th:first-child,
+        td:first-child {
+            text-align: center;
+        }
+
+        /* --- UI Elements --- */
+        button {
+            cursor: pointer;
+            background: #334155;
+            color: #fff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        button.primary {
+            background: var(--primary);
+        }
+
+        button.accent {
+            background: var(--accent);
+            color: #000;
+        }
+
+        button.warn {
+            background: var(--warn);
+            color: #000;
+        }
+
+        button.danger {
+            background: var(--danger);
+        }
+
+        .icon-btn {
+            padding: 6px 10px;
+            font-weight: bold;
+        }
+
+        input[type="number"] {
+            background: #000;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 4px;
+            width: 50px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        input[type="file"] {
+            font-size: 11px;
+            width: 180px;
+        }
+
+        .hint-text {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+
         #time-cursor {
             position: absolute;
             top: 0;
             bottom: 0;
             width: 2px;
-            background-color: rgba(255, 0, 0, 0.8);
-            /* 赤色、少し透明 */
+            background-color: rgba(239, 68, 68, 0.8);
             pointer-events: none;
-            /* マウス操作を邪魔しない */
             display: none;
-            /* 最初は非表示 */
             z-index: 10;
-            transition: left 0.05s linear;
-            /* 滑らかに動かす */
+        }
+
+        /* --- Responsive Queries --- */
+        @media (max-width: 900px) {
+            body {
+                height: auto;
+                overflow-y: auto;
+            }
+
+            .app-grid {
+                grid-template-columns: 1fr;
+                height: auto;
+                display: block;
+            }
+
+            .video-panel {
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .canvas-container {
+                aspect-ratio: 16/9;
+                height: auto;
+            }
+
+            .data-panel {
+                height: auto;
+                border-left: none;
+            }
+
+            .table-section {
+                height: 250px;
+            }
+
+            .chart-container {
+                height: 250px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header-controls {
+                display: none;
+            }
+
+            .toolbar {
+                gap: 4px;
+                padding: 4px;
+            }
+
+            button {
+                font-size: 11px;
+                padding: 6px 8px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 
 <body>
-    <div class="wrap">
-        <h1>動画運動解析アプリ <span class="mini" style="font-weight:normal"></span></h1>
-        <p class="sub"><br>・1 m 物体でスケール校正 → 軸の設定（任意）→ 1コマずつクリックで座標記録（最初の記録点を原点扱い） → グラフ自動更新 → 画像/CSV保存</p>
+    <header>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <h1>動画運動解析</h1>
+            <input id="file" type="file" accept="video/*" />
+        </div>
+        <div class="header-controls">
+            <button id="btnDemo" class="warn" style="padding:4px 8px; font-size:11px;">デモ動画</button>
+            <button id="btnCSV" class="primary" style="padding:4px 8px; font-size:11px;">CSV保存</button>
+        </div>
+    </header>
 
-        <div class="grid">
-            <div class="card">
-                <div class="row" style="justify-content:space-between">
-                    <div class="row">
-                        <label>動画を読み込む</label>
-                        <input id="file" type="file" accept="video/*" />
-                        <button id="btnDemo" class="warn" title="小さなデモ動画を読み込み">デモ</button>
-                    </div>
-                    <div class="pill" title="iOS向け設定: インライン再生・自動停止">
-                        <span>iOS最適化</span>
-                    </div>
-                </div>
-
-                <div class="row" style="margin-top:6px">
-                    <button id="btnPrev">◀︎ 1フレーム</button>
-                    <button id="btnNext">1フレーム ▶︎</button>
-                    <button id="btnPlay" class="primary">再生/一時停止</button>
-                    <div class="pill"><span>FPS</span> <input id="fps" type="number" step="0.01" value="30"
-                            style="width:78px"> <span class="mini">（自動取得が不安定な時は手入力）</span></div>
-                    <div class="pill"><label><input id="autoStep" type="checkbox" checked> クリック後に自動で1コマ進む</label></div>
-                </div>
-
-                <div class="row" style="margin-top:6px">
-                    <button id="btnCalib" class="accent">1 m 校正（ドラッグ）</button>
-                    <span id="scaleInfo" class="mini">未校正</span>
-
-                    <button id="btnAxis" class="accent" disabled>軸の設定</button>
-                    <button id="btnStartPlot" class="primary" disabled>プロットの開始</button>
-
-                    <span id="originInfo" class="mini">原点: 初期点</span>
-                    <button id="btnUndo" class="warn">一つ戻す</button>
-                    <button id="btnClear" class="danger">全消去</button>
-                </div>
-
-                <div class="sep"></div>
-
-                <canvas id="canvas" width="960" height="540"></canvas>
-                <div class="mini hint">
-                    操作ヒント：<b>校正</b>後、必要なら<b>軸の設定</b>でx軸・y軸をドラッグで移動／回転（原点ハンドル＝中心丸、角度ハンドル＝x軸上の丸）。<br>
-                    「プロットの開始」で通常どおりクリック記録（記録後は自動で1コマ進む）。
-                </div>
-
+    <div class="app-grid">
+        <div class="video-panel">
+            <div class="canvas-container">
+                <canvas id="canvas"></canvas>
                 <video id="video" playsinline muted preload="metadata" style="display:none"></video>
             </div>
 
-            <div class="card">
-                <div class="kpi">
-                    <div class="card">
-                        <div class="mini">記録点数</div>
-                        <div id="kPoints" class="val">0</div>
-                    </div>
-                    <div class="card">
-                        <div class="mini">経過時間[s]</div>
-                        <div id="kTime" class="val">0.000</div>
-                    </div>
-                    <div class="card">
-                        <div class="mini">スケール[px/m]</div>
-                        <div id="kScale" class="val">—</div>
-                    </div>
-                    <div class="card">
-                        <div class="mini">FPS</div>
-                        <div id="kFPS" class="val">30.00</div>
-                    </div>
+            <div class="toolbar">
+                <div class="tool-group">
+                    <button id="btnPrev" class="icon-btn">◀</button>
+                    <button id="btnPlay" class="primary" style="width:60px">再生</button>
+                    <button id="btnNext" class="icon-btn">▶</button>
                 </div>
 
-                <div class="sep"></div>
-
-                <div class="row">
-                    <button id="btnCSV" class="primary">CSVダウンロード</button>
-                    <button id="btnPNGCurrent" title="現在のグラフ画像">グラフ画像</button>
+                <div class="tool-group">
+                    <span style="font-size:11px; color:#aaa; align-self:center; margin-left:4px;">FPS</span>
+                    <input id="fps" type="number" step="0.01" value="30">
+                    <label style="font-size:11px; display:flex; align-items:center; margin:0 6px;">
+                        <input id="autoStep" type="checkbox" checked> <span style="margin-left:2px">自動送り</span>
+                    </label>
                 </div>
 
-                <details style="margin-top:8px">
-                    <summary>計算設定（微分法）</summary>
-                    <div class="row" style="margin-top:6px">
-                        <label>速度：中央差分</label>
-                        <label>加速度：中央差分</label>
-                        <label class="mini">端点は前進/後退差分</label>
-                    </div>
-                </details>
+                <div class="tool-group">
+                    <button id="btnCalib" class="accent">1m校正</button>
+                    <button id="btnAxis" class="accent" disabled>軸設定</button>
+                    <button id="btnStartPlot" class="primary" disabled>記録開始</button>
+                </div>
 
-                <div class="sep"></div>
+                <div class="tool-group">
+                    <button id="btnUndo" class="warn">戻す</button>
+                    <button id="btnClear" class="danger">消去</button>
+                </div>
+            </div>
 
-                <div class="row" id="chartControls" style="margin-bottom:8px">
+            <div style="padding:4px 8px; background:#111; font-size:11px; color:#666; text-align:center;">
+                <span id="scaleInfo">未校正</span> / <span id="originInfo">原点:未設定</span>
+            </div>
+        </div>
+
+        <div class="data-panel">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">記録点数</div>
+                    <div id="kPoints" class="kpi-val">0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">経過時間 [s]</div>
+                    <div id="kTime" class="kpi-val">0.000</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">スケール [px/m]</div>
+                    <div id="kScale" class="kpi-val">—</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">FPS (検出)</div>
+                    <div id="kFPS" class="kpi-val">30.00</div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <div class="chart-controls">
                     <button class="modeBtn" data-mode="xt">x-t</button>
                     <button class="modeBtn" data-mode="yt">y-t</button>
                     <button class="modeBtn" data-mode="vxt">vx-t</button>
                     <button class="modeBtn" data-mode="vyt">vy-t</button>
                     <button class="modeBtn" data-mode="axt">ax-t</button>
                     <button class="modeBtn" data-mode="ayt">ay-t</button>
-                    <span class="pill">現在: <span id="modeLabel">x-t</span></span>
+                    <button id="btnPNGCurrent" style="margin-left:auto; padding:2px 6px; font-size:10px;">画像</button>
                 </div>
-                <div id="rightPane" style="display:grid; grid-template-rows: 260px 1fr; gap:8px; height:420px">
-                    <div id="chartBox" style="height:260px; overflow:hidden; position: relative;">
-                        <canvas id="chart_main" style="width:100%; height:100%"></canvas>
-                        <div id="time-cursor"></div>
-                    </div>
-                    <div class="card" style="overflow:auto;">
-                        <table id="dataTable" style="width:100%; border-collapse:collapse; font-size:12px">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>t[s]</th>
-                                    <th>x[m]</th>
-                                    <th>y[m]</th>
-                                    <th>vx[m/s]</th>
-                                    <th>vy[m/s]</th>
-                                    <th>ax[m/s²]</th>
-                                    <th>ay[m/s²]</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableBody"></tbody>
-                        </table>
-                    </div>
+                <div id="chartBox" class="chart-container">
+                    <canvas id="chart_main"></canvas>
+                    <div id="time-cursor"></div>
                 </div>
+            </div>
+
+            <div class="table-section">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>t</th>
+                            <th>x</th>
+                            <th>y</th>
+                            <th>vx</th>
+                            <th>vy</th>
+                            <th>ax</th>
+                            <th>ay</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+
+            <div class="hint-text">
+                ヒント: デモ読込 → 「1m校正」でドラッグ → 「軸設定」で原点移動 → 「記録開始」でクリック。
             </div>
         </div>
     </div>
@@ -329,7 +467,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script>
         (() => {
-            // ====== デモ動画の相対パス（方式A）======
             const DEMO_URL = "./demo_faststart.mp4";
 
             // DOM refs
@@ -359,58 +496,49 @@
             const modeButtons = document.querySelectorAll('.modeBtn');
 
             // State
-            let points = []; // {t, xpx, ypx, xm, ym}
-            let origin = null; // {xm, ym}
-            let scalePxPerMeter = null; // pixels per meter
+            let points = [];
+            let origin = null;
+            let scalePxPerMeter = null;
             let calibMode = false;
             let playing = false;
 
-            // 校正ドラッグ用
+            // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
-
-            // 軸設定
-            let axisMode = false;   // 軸を表示＆編集
-            let axisActive = false; // 軸を確定してプロットに利用
-            let axis = { ox: 480, oy: 270, theta: 0 }; // ピクセル座標の原点、ラジアン
+            let axisMode = false;
+            let axisActive = false;
+            let axis = { ox: 0, oy: 0, theta: 0 };
             const AXIS_HANDLE_R = 10;
-            const AXIS_HANDLE_LEN = 80; // x軸上の角度ハンドルまでの距離
+            const AXIS_HANDLE_LEN = 80;
 
-            // Chart (single)
+            // Chart
             const ch = new Chart(document.getElementById('chart_main'), {
                 type: 'line',
-                data: { labels: [], datasets: [{ label: '', data: [], pointRadius: 2, tension: 0, borderColor: '#38bdf8', backgroundColor: '#38bdf8' }] },
+                data: { labels: [], datasets: [{ label: 'x-t', data: [], pointRadius: 2, tension: 0, borderColor: '#3b82f6', backgroundColor: '#3b82f6' }] },
                 options: {
                     animation: false, responsive: true, maintainAspectRatio: false,
                     scales: {
-                        x: {
-                            type: 'linear', // ★ここが重要：時間を数値として扱う
-                            min: 0,         // 常に0秒から開始
-                            title: { display: true, text: 't [s]', color: '#e5e7eb' },
-                            ticks: { color: '#e5e7eb' },
-                            grid: { color: '#334155' }
-                        },
-                        y: { title: { display: true, text: '', color: '#e5e7eb' }, ticks: { color: '#e5e7eb' }, grid: { color: '#334155' } }
+                        x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        y: { title: { display: true, text: '', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
                     },
                     plugins: { legend: { display: false } }
                 }
             });
             let mode = 'xt';
 
-            // Helpers
-            const dpr = () => (window.devicePixelRatio || 1);
             function resizeCanvasToVideo() {
-                const w = video.videoWidth || 960;
-                const h = video.videoHeight || 540;
-                const ratio = dpr();
-                canvas.width = w * ratio;
-                canvas.height = h * ratio;
-                ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-                axis.ox = w / 2; axis.oy = h / 2; // 軸の原点を中央へ
+                const vw = video.videoWidth || 960;
+                const vh = video.videoHeight || 540;
+                canvas.width = vw;
+                canvas.height = vh;
+                if (axis.ox === 0 && axis.oy === 0) {
+                    axis.ox = vw / 2; axis.oy = vh / 2;
+                }
                 drawFrame();
             }
+            window.addEventListener('resize', () => { ch.resize(); });
 
             function drawInfiniteLine(point, dir, color, width = 2) {
-                const w = canvas.width / dpr(), h = canvas.height / dpr();
+                const w = canvas.width, h = canvas.height;
                 const L = Math.max(w, h) * 2;
                 ctx.save();
                 ctx.strokeStyle = color; ctx.lineWidth = width;
@@ -424,78 +552,63 @@
             function drawAxisOverlay() {
                 const ex = { x: Math.cos(axis.theta), y: Math.sin(axis.theta) };
                 const ey = { x: Math.sin(axis.theta), y: -Math.cos(axis.theta) };
-
-                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ex, '#22c55e');  // x軸: 緑
-                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ey, '#60a5fa');  // y軸: 青
-
+                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ex, '#10b981');
+                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ey, '#3b82f6');
                 ctx.fillStyle = '#f8fafc';
                 ctx.beginPath(); ctx.arc(axis.ox, axis.oy, AXIS_HANDLE_R, 0, Math.PI * 2); ctx.fill();
-
                 const hx = axis.ox + ex.x * AXIS_HANDLE_LEN;
                 const hy = axis.oy + ex.y * AXIS_HANDLE_LEN;
                 ctx.fillStyle = '#facc15';
                 ctx.beginPath(); ctx.arc(hx, hy, AXIS_HANDLE_R, 0, Math.PI * 2); ctx.fill();
-
-                ctx.fillStyle = '#22c55e'; ctx.font = '14px system-ui';
-                ctx.fillText('x', axis.ox + ex.x * (AXIS_HANDLE_LEN + 14), axis.oy + ex.y * (AXIS_HANDLE_LEN + 14));
-                ctx.fillStyle = '#60a5fa';
-                ctx.fillText('y', axis.ox + ey.x * (AXIS_HANDLE_LEN + 14), axis.oy + ey.y * (AXIS_HANDLE_LEN + 14));
+                ctx.font = '20px sans-serif';
+                ctx.fillStyle = '#10b981';
+                ctx.fillText('x', axis.ox + ex.x * (AXIS_HANDLE_LEN + 20), axis.oy + ex.y * (AXIS_HANDLE_LEN + 20));
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillText('y', axis.ox + ey.x * (AXIS_HANDLE_LEN + 20), axis.oy + ey.y * (AXIS_HANDLE_LEN + 20));
             }
 
             function drawFrame() {
-                const w = canvas.width / dpr();
-                const h = canvas.height / dpr();
-
-                if (isNaN(video.duration)) {
-                    return;
+                const w = canvas.width;
+                const h = canvas.height;
+                ctx.clearRect(0, 0, w, h);
+                if (!isNaN(video.duration)) {
+                    ctx.drawImage(video, 0, 0, w, h);
                 }
-
-                ctx.clearRect(0, 0, w, h); // ★修正: 描画できるとわかってから消す
-                try { ctx.drawImage(video, 0, 0, w, h); } catch (e) { }
-
                 if (calibMode) {
                     if (calibDragging && calibStart) {
                         const a = calibStart, b = (calibEnd || mousePos);
-                        ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 2;
+                        ctx.strokeStyle = '#fde68a'; ctx.lineWidth = 3;
                         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
                         const d = Math.hypot(b.x - a.x, b.y - a.y);
-                        ctx.fillStyle = '#fde68a'; ctx.font = '12px system-ui';
-                        ctx.fillText(`${d.toFixed(1)} px`, (a.x + b.x) / 2 + 6, (a.y + b.y) / 2 - 6);
+                        ctx.fillStyle = '#fde68a'; ctx.font = '20px sans-serif';
+                        ctx.fillText(`${d.toFixed(1)} px`, (a.x + b.x) / 2 + 10, (a.y + b.y) / 2 - 10);
                     }
                 }
-
                 if (axisMode) drawAxisOverlay();
-
                 if (points.length) {
                     ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
                     ctx.moveTo(points[0].xpx, points[0].ypx);
                     for (let i = 1; i < points.length; i++) { ctx.lineTo(points[i].xpx, points[i].ypx); }
                     ctx.stroke();
                     for (let i = 0; i < points.length; i++) {
-                        ctx.fillStyle = '#22c55e';
-                        ctx.beginPath(); ctx.arc(points[i].xpx, points[i].ypx, 4, 0, Math.PI * 2); ctx.fill();
+                        ctx.fillStyle = '#10b981';
+                        ctx.beginPath(); ctx.arc(points[i].xpx, points[i].ypx, 5, 0, Math.PI * 2); ctx.fill();
                     }
                 }
-
-                if (mousePos) {
-                    ctx.strokeStyle = '#9ca3afaa'; ctx.lineWidth = 1; ctx.beginPath();
-                    ctx.moveTo(mousePos.x - 10, mousePos.y); ctx.lineTo(mousePos.x + 10, mousePos.y);
-                    ctx.moveTo(mousePos.x, mousePos.y - 10); ctx.lineTo(mousePos.x, mousePos.y + 10);
-                    ctx.stroke();
-                }
             }
 
-            // Pointer
-            const rect = () => canvas.getBoundingClientRect();
             let mousePos = { x: 0, y: 0 };
             function getXY(evt) {
-                const r = rect();
-                const ratio = canvas.width / dpr() / r.width;
-                return { x: (evt.clientX - r.left) * ratio, y: (evt.clientY - r.top) * ratio };
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                return {
+                    x: (evt.clientX - rect.left) * scaleX,
+                    y: (evt.clientY - rect.top) * scaleY
+                };
             }
 
-            // 軸ドラッグ判定
-            let dragMode = null; // 'moveOrigin' | 'rotate' | null
+            let dragMode = null;
             function hitCircle(px, py, cx, cy, r) { return Math.hypot(px - cx, py - cy) <= r; }
 
             canvas.addEventListener('pointermove', e => {
@@ -517,8 +630,9 @@
                     const ex = { x: Math.cos(axis.theta), y: Math.sin(axis.theta) };
                     const hx = axis.ox + ex.x * AXIS_HANDLE_LEN;
                     const hy = axis.oy + ex.y * AXIS_HANDLE_LEN;
-                    if (hitCircle(p.x, p.y, axis.ox, axis.oy, AXIS_HANDLE_R * 1.5)) dragMode = 'moveOrigin';
-                    else if (hitCircle(p.x, p.y, hx, hy, AXIS_HANDLE_R * 1.5)) dragMode = 'rotate';
+                    const hitR = AXIS_HANDLE_R * 2.5;
+                    if (hitCircle(p.x, p.y, axis.ox, axis.oy, hitR)) dragMode = 'moveOrigin';
+                    else if (hitCircle(p.x, p.y, hx, hy, hitR)) dragMode = 'rotate';
                     else dragMode = null;
                     return;
                 }
@@ -528,11 +642,9 @@
                     drawFrame(); return;
                 }
 
-                // プロットは "プロット開始" が押されてから
                 if (btnStartPlot.disabled && !axisActive) {
-                    // 校正がまだ
-                    if (scalePxPerMeter == null) alert('先に「1 m 校正」を行ってください。');
-                    else alert('「プロットの開始」ボタンを押してから記録してください。');
+                    if (scalePxPerMeter == null) alert('手順:「1 m 校正」を行ってください。');
+                    else alert('手順:「記録開始」ボタンを押してから画面をクリックしてください。');
                     return;
                 }
 
@@ -551,14 +663,12 @@
                 dragMode = null;
             }, { passive: false });
 
-            // 校正確定
             function finalizeCalibration(a, b) {
                 const dpx = Math.hypot(b.x - a.x, b.y - a.y);
                 if (dpx > 0) {
-                    scalePxPerMeter = dpx / 1.0; // 1mのpx
-                    scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1.000 m`;
+                    scalePxPerMeter = dpx / 1.0;
+                    scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1m`;
                     kScale.textContent = scalePxPerMeter.toFixed(2);
-                    // 校正が済むまで無効だった「軸の設定」を有効化
                     btnAxis.disabled = false;
                 }
                 calibMode = false; calibDragging = false; calibStart = calibEnd = null;
@@ -566,13 +676,12 @@
                 drawFrame();
             }
 
-            // 座標変換（軸）
             function pxToAxisMeters(xpx, ypx) {
                 if (!scalePxPerMeter) return { xm: NaN, ym: NaN };
                 const vx = xpx - axis.ox, vy = ypx - axis.oy;
                 const c = Math.cos(axis.theta), s = Math.sin(axis.theta);
-                const xr_px = vx * c + vy * s;        // ex = (c,s)
-                const yr_px = vx * s + vy * (-c);     // ey = ( s,-c ) 上向き正
+                const xr_px = vx * c + vy * s;
+                const yr_px = vx * s + vy * (-c);
                 return { xm: xr_px / scalePxPerMeter, ym: yr_px / scalePxPerMeter };
             }
 
@@ -582,7 +691,7 @@
                 const loc = pxToAxisMeters(xpx, ypx);
                 if (points.length === 0 && !origin) {
                     origin = { xm: loc.xm, ym: loc.ym };
-                    originInfo.textContent = `原点: 初期点`;
+                    originInfo.textContent = `原点: 設定済`;
                 }
                 const xm = loc.xm - (origin?.xm ?? 0);
                 const ym = loc.ym - (origin?.ym ?? 0);
@@ -610,8 +719,6 @@
 
             function updateMainChart(t, x, y, vx, vy, ax, ay) {
                 let data = [], ylabel = '';
-
-                // 表示モードに合わせてデータを決定
                 switch (mode) {
                     case 'xt': data = x; ylabel = 'x [m]'; break;
                     case 'yt': data = y; ylabel = 'y [m]'; break;
@@ -620,29 +727,16 @@
                     case 'axt': data = ax; ylabel = 'ax [m/s²]'; break;
                     case 'ayt': data = ay; ylabel = 'ay [m/s²]'; break;
                 }
-
-                // ▼▼▼ 修正：データを {x:時間, y:値} の形式に変換して渡す ▼▼▼
-                // データが存在する場合のみマッピング処理を行う
                 if (t && t.length > 0 && data && data.length > 0) {
-                    const scatterData = t.map((timeVal, i) => ({
-                        x: timeVal,
-                        y: data[i]
-                    }));
+                    const scatterData = t.map((timeVal, i) => ({ x: timeVal, y: data[i] }));
                     ch.data.datasets[0].data = scatterData;
                 } else {
                     ch.data.datasets[0].data = [];
                 }
-
-                // ラベル配列は使わないので空にする（リニア軸の場合は不要）
                 ch.data.labels = [];
-
-                // データセットのラベル更新
                 ch.data.datasets[0].label = mode.toUpperCase();
-
-                // Y軸ラベルの更新
                 ch.options.scales.y.title.text = ylabel;
 
-                // Y軸の範囲調整（以前のコードのまま）
                 if (Array.isArray(data) && data.length) {
                     let dmin = Infinity, dmax = -Infinity;
                     for (const v of data) { if (Number.isFinite(v)) { dmin = Math.min(dmin, v); dmax = Math.max(dmax, v); } }
@@ -652,13 +746,12 @@
                     else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
                     ch.options.scales.y.min = lo; ch.options.scales.y.max = hi;
                 } else { ch.options.scales.y.min = -1; ch.options.scales.y.max = 1; }
-
                 ch.update();
-
-                // モード表示の更新
-                const ml = document.getElementById('modeLabel');
-                if (ml) ml.textContent = ({ xt: 'x-t', yt: 'y-t', vxt: 'vx-t', vyt: 'vy-t', axt: 'ax-t', ayt: 'ay-t' })[mode] || mode;
+                modeButtons.forEach(b => {
+                    b.style.backgroundColor = (b.dataset.mode === mode) ? '#2563eb' : '#334155';
+                });
             }
+
             function diffCentral(t, y) {
                 if (t.length < 2) return t.map(() => NaN);
                 const n = t.length; const dy = new Array(n).fill(NaN);
@@ -667,22 +760,13 @@
                 return dy;
             }
 
-            // --- Video Control (修正版) ---
             function stepFrame(dir) {
                 const fps = clampFPS(+fpsInput.value);
                 kFPS.textContent = fps.toFixed(2);
                 const dt = 1.0 / Math.max(1, fps);
-
-                // ★ 修正点: 境界問題を回避するための微小オフセット (1ms)
-                // iPhone動画をWindowsで扱う際、30fpsジャストで加算すると
-                // 浮動小数点誤差により「現在のコマ」から抜け出せない場合があるため。
                 const epsilon = 0.001;
-
-                video.pause(); playing = false; btnPlay.textContent = '再生/一時停止';
-
-                // 進むときは +epsilon, 戻るときは -epsilon で確実に境界を越える
+                video.pause(); playing = false; btnPlay.textContent = '再生';
                 let target = video.currentTime + (dir * dt) + (dir * epsilon);
-
                 target = clamp(target, 0, (video.duration || 0));
                 return seekTo(target);
             }
@@ -695,38 +779,22 @@
                     const onSeeked = () => {
                         clearTimeout(timer);
                         drawFrame();
-                        requestAnimationFrame(() => {
-                            drawFrame();
-                            res();
-                        });
+                        requestAnimationFrame(() => { drawFrame(); res(); });
                     };
-
-                    // ★重要：iPad Safariでも確実に拾えるよう once で登録
                     video.addEventListener('seeked', onSeeked, { once: true });
-
-                    // ★保険：seeked が来ないケースに備える（300ms程度）
-                    const timer = setTimeout(() => {
-                        // それでも描画だけはして返す
-                        drawFrame();
-                        res();
-                    }, 300);
-
+                    const timer = setTimeout(() => { drawFrame(); res(); }, 300);
                     video.currentTime = t;
                 });
             }
 
             btnPrev.onclick = async () => { await stepFrame(-1); };
             btnNext.onclick = async () => { await stepFrame(+1); };
+            btnPlay.onclick = () => { if (!playing) { video.play(); } else { video.pause(); } };
 
-            btnPlay.onclick = () => { if (!playing) { video.play(); playing = true; btnPlay.textContent = '一時停止'; } else { video.pause(); playing = false; btnPlay.textContent = '再生/一時停止'; } };
-
-            // 1m校正
             btnCalib.onclick = () => {
                 calibMode = true; calibDragging = false; calibStart = calibEnd = null;
-                btnCalib.disabled = true; scaleInfo.textContent = '1 m の両端をドラッグして指定';
+                btnCalib.disabled = true; scaleInfo.textContent = 'ドラッグして1m指定';
             };
-
-            // 軸の設定 → プロット開始
             btnAxis.onclick = () => {
                 axisMode = true; axisActive = false;
                 btnStartPlot.disabled = false;
@@ -737,7 +805,6 @@
                 btnStartPlot.disabled = true;
                 drawFrame();
             };
-
             btnUndo.onclick = async () => {
                 if (points.length) {
                     points.pop();
@@ -746,25 +813,20 @@
                     await stepFrame(-1);
                 }
             };
-
             btnClear.onclick = () => {
-                if (confirm('記録をすべて消去しますか？')) {
+                if (confirm('記録を消去しますか？')) {
                     points = []; origin = null; calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                     axisActive = false; axisMode = false;
                     btnAxis.disabled = true;
                     btnStartPlot.disabled = true;
-
-                    kPoints.textContent = '0'; kTime.textContent = '0.000'; originInfo.textContent = '原点: 初期点';
+                    kPoints.textContent = '0'; kTime.textContent = '0.000'; originInfo.textContent = '原点:未設定';
                     scaleInfo.textContent = '未校正'; kScale.textContent = '—';
                     drawFrame(); recompute();
                 }
             };
-
-            // CSV
             btnCSV.onclick = () => {
                 if (!points.length) return alert("データがありません");
                 let csv = "t[s],x[m],y[m],vx[m/s],vy[m/s],ax[m/s^2],ay[m/s^2]\n";
-                // 再計算用
                 const t = points.map(p => p.t);
                 const x = points.map(p => p.xm);
                 const y = points.map(p => p.ym);
@@ -772,7 +834,6 @@
                 const vy = diffCentral(t, y);
                 const ax = diffCentral(t, vx);
                 const ay = diffCentral(t, vy);
-
                 for (let i = 0; i < points.length; i++) {
                     csv += `${t[i]},${x[i]},${y[i]},${vx[i]},${vy[i]},${ax[i]},${ay[i]}\n`;
                 }
@@ -781,39 +842,26 @@
                 const a = document.createElement('a');
                 a.href = url; a.download = 'motion_data.csv'; a.click();
             };
-
-            // Graph Image
             btnPNGCurrent.onclick = () => {
                 const url = ch.toBase64Image();
                 const a = document.createElement('a');
                 a.href = url; a.download = 'chart.png'; a.click();
             };
-
-            // Mode buttons
             modeButtons.forEach(btn => {
-                btn.onclick = () => {
-                    mode = btn.dataset.mode;
-                    recompute();
-                };
+                btn.onclick = () => { mode = btn.dataset.mode; recompute(); };
             });
 
-            // ファイル読込
             file.addEventListener('change', async (e) => {
                 if (!e.target.files || !e.target.files[0]) return;
-                const f = e.target.files[0];
-                await loadVideo(URL.createObjectURL(f));
+                await loadVideo(URL.createObjectURL(e.target.files[0]));
             });
-
             btnDemo.onclick = async () => {
-                try { await loadVideo(DEMO_URL); }
-                catch (e) { alert("デモ動画の読み込みに失敗しました。"); }
+                try { await loadVideo(DEMO_URL); } catch (e) { alert("デモ動画エラー"); }
             };
 
             async function loadVideo(url) {
                 resetAll();
                 video.src = url;
-                video.playsInline = true;
-                video.muted = true;
                 video.load();
                 await new Promise(res => video.addEventListener('loadedmetadata', res, { once: true }));
                 guessFPS();
@@ -822,13 +870,11 @@
             }
 
             function resetAll() {
-                points = []; origin = null; scalePxPerMeter = null; calibMode = false; calibDragging = false; calibStart = calibEnd = null;
-                axisActive = false; axisMode = false;
-                axis.theta = 0;
-                btnAxis.disabled = true;
-                btnStartPlot.disabled = true;
-
-                kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—'; scaleInfo.textContent = '未校正'; originInfo.textContent = '原点: 初期点';
+                points = []; origin = null; scalePxPerMeter = null; calibMode = false; calibDragging = false;
+                axisActive = false; axisMode = false; axis.theta = 0;
+                btnAxis.disabled = true; btnStartPlot.disabled = true;
+                kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—';
+                scaleInfo.textContent = '未校正'; originInfo.textContent = '原点:未設定';
                 ch.data.labels = []; ch.data.datasets[0].data = []; ch.update();
                 recompute();
             }
@@ -850,166 +896,107 @@
                 const tb = document.getElementById('tableBody'); if (!tb) return;
                 let html = '';
                 for (let i = 0; i < points.length; i++) {
-                    html += `<tr><td>${i}</td><td>${(t[i] ?? NaN).toFixed(3)}</td><td>${(x[i] ?? NaN).toFixed(4)}</td><td>${(y[i] ?? NaN).toFixed(4)}</td><td>${(vx[i] ?? NaN).toFixed(4)}</td><td>${(vy[i] ?? NaN).toFixed(4)}</td><td>${(ax[i] ?? NaN).toFixed(4)}</td><td>${(ay[i] ?? NaN).toFixed(4)}</td></tr>`;
+                    html += `<tr><td>${i}</td><td>${(t[i] ?? NaN).toFixed(3)}</td><td>${(x[i] ?? NaN).toFixed(3)}</td><td>${(y[i] ?? NaN).toFixed(3)}</td><td>${(vx[i] ?? NaN).toFixed(2)}</td><td>${(vy[i] ?? NaN).toFixed(2)}</td><td>${(ax[i] ?? NaN).toFixed(2)}</td><td>${(ay[i] ?? NaN).toFixed(2)}</td></tr>`;
                 }
                 tb.innerHTML = html;
             }
 
-            // ▼▼▼ ここから追加：グラフと動画の連動機能 ▼▼▼
-
+            // --- グラフ操作と動画同期のロジック改善版 ---
             const cursor = document.getElementById('time-cursor');
             const chartBox = document.getElementById('chartBox');
             let isDraggingGraph = false;
-            let pendingSeek = null;
-            let seekScheduled = false;
 
-            video.addEventListener('timeupdate', () => {
-                if (video.paused) updateCursorFromVideo();
-            });
-
+            // 動画の再生位置が変わったら赤線を動かす
+            video.addEventListener('timeupdate', () => { if (video.paused) updateCursorFromVideo(); });
             function updateCursorFromVideo() {
-                // ドラッグ中は更新しない（カクつき防止）
-                if (isDraggingGraph) return;
+                // ドラッグ中は、マウス操作による移動を優先するため、動画からの自動位置合わせはスキップする
+                if (isDraggingGraph || !points.length || !ch.scales.x) return;
 
-                // データがない、またはChartの準備ができていない場合は非表示
-                if (!points.length || !ch.scales.x) {
-                    cursor.style.display = 'none';
-                    return;
-                }
-
-                const currentTime = video.currentTime;
+                const val = video.currentTime;
+                const x = ch.scales.x.getPixelForValue(val);
                 const chartArea = ch.chartArea;
-
-                // 時間をグラフ上のピクセル位置(X)に変換
-                // Chart.jsの機能を使います
-                const x = ch.scales.x.getPixelForValue(currentTime);
-
-                // グラフの描画エリア（左右の軸の内側）に収まっているか判定
                 if (x >= chartArea.left && x <= chartArea.right) {
                     cursor.style.display = 'block';
                     cursor.style.left = `${x}px`;
-                    // 線の高さをグラフ描画エリアに合わせる（下の軸文字に被らないように調整）
                     cursor.style.top = `${chartArea.top}px`;
                     cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
                 } else {
-                    cursor.style.display = 'none'; // 範囲外なら隠す
+                    cursor.style.display = 'none';
                 }
             }
 
-            // 2. グラフ上の操作で動画を動かす（ドラッグ＆クリック）
+            // グラフ上でのマウス/タッチ操作
             chartBox.addEventListener('pointerdown', (e) => {
-                // データがない場合は何もしない
                 if (!points.length) return;
-
                 isDraggingGraph = true;
-                e.preventDefault(); // テキスト選択などを防止
+
+                // 再生中なら止める（操作しやすくするため）
+                video.pause();
+
+                e.preventDefault();
                 if (chartBox.setPointerCapture) chartBox.setPointerCapture(e.pointerId);
                 syncVideoToGraphMouse(e);
             });
 
             window.addEventListener('pointermove', (e) => {
                 if (isDraggingGraph) {
+                    e.preventDefault();
                     syncVideoToGraphMouse(e);
                 }
             });
 
-            window.addEventListener('pointerup', () => {
+            window.addEventListener('pointerup', (e) => {
                 if (isDraggingGraph) {
                     isDraggingGraph = false;
                     if (chartBox.releasePointerCapture && e?.pointerId != null) {
                         try { chartBox.releasePointerCapture(e.pointerId); } catch (_) { }
                     }
-                    // ドラッグ終了時に、念のため正しい位置に線を同期
+                    // ドラッグ終了時に整合性を確保
                     updateCursorFromVideo();
                 }
             });
 
-            // マウス位置から時間を計算して動画をシーク
             function syncVideoToGraphMouse(e) {
-                // Chart.jsのスケール情報がない場合は中止
                 if (!ch.scales.x) return;
-
                 const rect = chartBox.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
 
-                // X座標(px)を時間(t)に逆変換
                 let targetTime = ch.scales.x.getValueForPixel(mouseX);
-
-                // 動画の範囲内に収める
                 targetTime = Math.max(0, Math.min(targetTime, video.duration || 0));
 
-                // 1. 縦線を即座に動かす（体感速度向上）
-                cursor.style.display = 'block';
-                cursor.style.left = `${mouseX}px`;
+                // 1. 赤線を即座に動かす（体感速度向上）
                 const chartArea = ch.chartArea;
-                if (chartArea) {
+                if (chartArea && mouseX >= chartArea.left && mouseX <= chartArea.right) {
+                    cursor.style.display = 'block';
+                    cursor.style.left = `${mouseX}px`;
                     cursor.style.top = `${chartArea.top}px`;
                     cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
                 }
 
-                // ★iPad Safari対策：seek連打を間引き（最新値のみ反映）
-                pendingSeek = targetTime;
-                if (!seekScheduled) {
-                    seekScheduled = true;
-                    requestAnimationFrame(() => {
-                        seekScheduled = false;
-                        if (pendingSeek != null) {
-                            const t = pendingSeek;
-                            pendingSeek = null;
-                            seekTo(t);
-                        }
-                    });
+                // 2. 動画の時刻を更新する
+                if (Number.isFinite(targetTime)) {
+                    video.currentTime = targetTime;
                 }
             }
 
-            // ▼▼▼ ここから：スムーズな再生のための追加コード ▼▼▼
-
-            // 再生中、常に画面とグラフを更新し続けるループ関数
+            // 再生ループ
             function renderLoop() {
-                if (video.paused || video.ended) return; // 停止中はループ終了
-
-                drawFrame();            // Canvas（動画と点）の描画
-                updateCursorFromVideo(); // グラフの赤線の移動
-
-                requestAnimationFrame(renderLoop); // 次のコマの描画を予約（ここが重要）
-            }
-
-
-            // ▼▼▼ 追加：コマ送りやスライダー操作の瞬間に画面を更新する ▼▼▼
-            video.addEventListener('seeked', () => {
-                // 動画が停止している時だけ、ここで手動更新する
-                // (再生中は renderLoop が描画しているので、ここで描く必要はない)
-                if (video.paused) {
-                    drawFrame();            // 動画と点の描画
-                    updateCursorFromVideo(); // グラフの赤線の移動
-                }
-            });
-
-            // 動画が「再生」されたらループを開始
-            video.addEventListener('play', () => {
-                playing = true;
-                btnPlay.textContent = '一時停止';
-                renderLoop(); // ★ループ開始！
-            });
-
-            // 動画が「停止」したらボタンの表示を戻す
-            video.addEventListener('pause', () => {
-                playing = false;
-                btnPlay.textContent = '再生/一時停止';
-                // 停止時にも念のため一回描画して位置ズレを防ぐ
+                if (video.paused || video.ended) return;
                 drawFrame();
                 updateCursorFromVideo();
-            });
-
-            // 再生ボタンの処理をシンプルにする（動画の機能を呼ぶだけにする）
-            btnPlay.onclick = () => {
+                requestAnimationFrame(renderLoop);
+            }
+            video.addEventListener('seeked', () => {
+                // ドラッグ中や停止中のシーク完了時に描画を更新
                 if (video.paused) {
-                    video.play();
-                } else {
-                    video.pause();
+                    drawFrame();
+                    // ドラッグしていない時だけ、動画位置に赤線を合わせる
+                    // (ドラッグ中はマウス位置に赤線があってほしいので上書きしない)
+                    if (!isDraggingGraph) updateCursorFromVideo();
                 }
-            };
-
+            });
+            video.addEventListener('play', () => { playing = true; btnPlay.textContent = '停止'; renderLoop(); });
+            video.addEventListener('pause', () => { playing = false; btnPlay.textContent = '再生'; drawFrame(); updateCursorFromVideo(); });
 
         })();
     </script>
