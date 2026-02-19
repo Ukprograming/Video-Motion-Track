@@ -395,8 +395,7 @@
             <div class="canvas-wrapper">
                 <canvas id="canvas"></canvas>
                 <video id="video" playsinline muted preload="auto" style="display:none"></video>
-                <div
-                    style="position:absolute; top:8px; left:8px; font-size:11px; color:rgba(255,255,255,0.7); pointer-events:none;">
+                <div style="position:absolute; top:8px; left:8px; font-size:11px; color:rgba(255,255,255,0.7); pointer-events:none;">
                     <span id="scaleInfo">未校正</span> / <span id="originInfo">原点:未設定</span>
                 </div>
             </div>
@@ -417,9 +416,19 @@
                 </div>
 
                 <div class="tool-group">
-                    <button id="btnCalib" class="accent">1m校正</button>
+                    <button id="btnCalib" class="accent">距離校正</button>
+                    <span style="font-size:11px; color:#aaa;">基準[m]</span>
+                    <input id="calibLength" type="number" step="0.01" min="0.001" value="1" style="width:72px;">
                     <button id="btnAxis" class="accent" disabled>軸設定</button>
-                    <button id="btnStartPlot" class="primary" disabled>開始</button>
+                    <button id="btnStartPlot" class="primary" disabled>記録開始</button>
+                </div>
+
+                <div class="tool-group">
+                    <span style="font-size:11px; color:#aaa;">追跡対象</span>
+                    <select id="trackSelect" style="background:#000; border:1px solid var(--border); color:#fff; padding:6px; border-radius:4px; font-size:13px;">
+                        <option value="obj1">物体1</option>
+                        <option value="obj2">物体2</option>
+                    </select>
                 </div>
 
                 <div class="tool-group">
@@ -437,7 +446,7 @@
                         <div id="kPoints" class="kpi-val">0</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-label">経過時間 [s]</div>
+                        <div class="kpi-label">計測時間 [s]</div>
                         <div id="kTime" class="kpi-val">0.000</div>
                     </div>
                     <div class="kpi-card">
@@ -445,7 +454,7 @@
                         <div id="kScale" class="kpi-val">—</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-label">FPS (検出)</div>
+                        <div class="kpi-label">FPS (読取)</div>
                         <div id="kFPS" class="kpi-val">30.00</div>
                     </div>
                 </div>
@@ -458,8 +467,7 @@
                         <button class="modeBtn" data-mode="vyt" style="padding:4px 8px; font-size:11px;">vy</button>
                         <button class="modeBtn" data-mode="axt" style="padding:4px 8px; font-size:11px;">ax</button>
                         <button class="modeBtn" data-mode="ayt" style="padding:4px 8px; font-size:11px;">ay</button>
-                        <button id="btnPNGCurrent"
-                            style="margin-left:auto; padding:4px 6px; font-size:10px;">画像</button>
+                        <button id="btnPNGCurrent" style="margin-left:auto; padding:4px 6px; font-size:10px;">画像</button>
                     </div>
                     <div id="chartBox" class="chart-container">
                         <canvas id="chart_main"></canvas>
@@ -484,11 +492,10 @@
                 </div>
 
                 <div style="font-size:11px; color:#64748b; line-height:1.4;">
-                    1. 動画読込 → 2. [1m校正]でドラッグ → 3. [軸設定]で原点移動 → 4. [開始] → 画面クリックで記録
+                    1. 動画読込 → 2. [距離校正]でドラッグ → 3. [軸設定]で原点調整 → 4. [記録開始]後に画面クリックで記録
                 </div>
-                <div class="tool-group"
-                    style="display:flex; justify-content:center; margin-top:10px; padding:0; background:none;">
-                    <button id="btnCSVMobile" class="primary" style="width:100%; display:none;">CSV保存</button>
+                <div class="tool-group" style="display:flex; justify-content:center; margin-top:10px; padding:0; background:none;">
+                    <button id="btnCSVMobile" class="primary" style="width:100%; display:none;">CSV出力</button>
                 </div>
             </div>
         </div>
@@ -508,6 +515,7 @@
             const btnNext = document.getElementById('btnNext');
             const btnPlay = document.getElementById('btnPlay');
             const btnCalib = document.getElementById('btnCalib');
+            const calibLengthInput = document.getElementById('calibLength');
             const btnUndo = document.getElementById('btnUndo');
             const btnClear = document.getElementById('btnClear');
             const btnDemo = document.getElementById('btnDemo');
@@ -524,11 +532,16 @@
             const btnPNGCurrent = document.getElementById('btnPNGCurrent');
             const btnAxis = document.getElementById('btnAxis');
             const btnStartPlot = document.getElementById('btnStartPlot');
+            const trackSelect = document.getElementById('trackSelect');
             const modeButtons = document.querySelectorAll('.modeBtn');
 
             // State
-            let points = [];
-            let origin = null;
+            const TRACKS = [
+                { id: 'obj1', label: '物体1', lineColor: '#38bdf8', pointColor: '#10b981' },
+                { id: 'obj2', label: '物体2', lineColor: '#fb923c', pointColor: '#f97316' }
+            ];
+            let tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+            let currentTrackId = 'obj1';
             let scalePxPerMeter = null;
             let calibMode = false;
             let playing = false;
@@ -555,6 +568,26 @@
                 }
             });
             let mode = 'xt';
+
+            function getCurrentTrack() {
+                return tracks[currentTrackId];
+            }
+
+            function getCurrentPoints() {
+                return getCurrentTrack().points;
+            }
+
+            function getTrackById(trackId) {
+                return tracks[trackId];
+            }
+
+            function refreshCurrentTrackInfo() {
+                const current = getCurrentTrack();
+                const pts = current.points;
+                kPoints.textContent = String(pts.length);
+                kTime.textContent = pts.length > 1 ? (pts[pts.length - 1].t - pts[0].t).toFixed(3) : '0.000';
+                originInfo.textContent = current.origin ? '原点: 設定済み' : '原点:未設定';
+            }
 
             function resizeCanvasToVideo() {
                 const container = canvas.parentElement;
@@ -618,16 +651,25 @@
                     }
                 }
                 if (axisMode) drawAxisOverlay();
-                if (points.length) {
-                    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
-                    ctx.moveTo(points[0].xpx, points[0].ypx);
-                    for (let i = 1; i < points.length; i++) { ctx.lineTo(points[i].xpx, points[i].ypx); }
+                TRACKS.forEach(trackMeta => {
+                    const pts = getTrackById(trackMeta.id).points;
+                    if (!pts.length) return;
+                    const selected = trackMeta.id === currentTrackId;
+                    ctx.strokeStyle = trackMeta.lineColor;
+                    ctx.globalAlpha = selected ? 1 : 0.55;
+                    ctx.lineWidth = selected ? 2.5 : 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].xpx, pts[0].ypx);
+                    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].xpx, pts[i].ypx);
                     ctx.stroke();
-                    for (let i = 0; i < points.length; i++) {
-                        ctx.fillStyle = '#10b981';
-                        ctx.beginPath(); ctx.arc(points[i].xpx, points[i].ypx, 6, 0, Math.PI * 2); ctx.fill();
+                    for (let i = 0; i < pts.length; i++) {
+                        ctx.fillStyle = trackMeta.pointColor;
+                        ctx.beginPath();
+                        ctx.arc(pts[i].xpx, pts[i].ypx, selected ? 6 : 4, 0, Math.PI * 2);
+                        ctx.fill();
                     }
-                }
+                    ctx.globalAlpha = 1;
+                });
             }
 
             let mousePos = { x: 0, y: 0 };
@@ -676,8 +718,8 @@
                 }
 
                 if (btnStartPlot.disabled && !axisActive) {
-                    if (scalePxPerMeter == null) alert('手順:「1m校正」を行ってください。');
-                    else alert('手順:「開始」ボタンを押してから画面をクリックしてください。');
+                    if (scalePxPerMeter == null) alert('手順:「距離校正」を行ってください。');
+                    else alert('手順:「軸設定」で原点を調整してから記録してください。');
                     return;
                 }
 
@@ -698,9 +740,12 @@
 
             function finalizeCalibration(a, b) {
                 const dpx = Math.hypot(b.x - a.x, b.y - a.y);
+                const refMetersRaw = parseFloat(calibLengthInput?.value);
+                const refMeters = Number.isFinite(refMetersRaw) && refMetersRaw > 0 ? refMetersRaw : 1;
                 if (dpx > 0) {
-                    scalePxPerMeter = dpx / 1.0;
-                    scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = 1m`;
+                    scalePxPerMeter = dpx / refMeters;
+                    const refMetersLabel = Number.isInteger(refMeters) ? String(refMeters) : refMeters.toFixed(3).replace(/\.?0+$/, '');
+                    scaleInfo.textContent = `校正済: ${dpx.toFixed(1)} px = ${refMetersLabel}m`;
                     kScale.textContent = scalePxPerMeter.toFixed(2);
                     btnAxis.disabled = false;
                 }
@@ -719,25 +764,26 @@
             }
 
             function recordPoint(xpx, ypx, t) {
-                if (scalePxPerMeter == null) { alert('先に「1 m 校正」を行ってください。'); return; }
+                if (scalePxPerMeter == null) { alert('先に「距離校正」を行ってください。'); return; }
                 if (axisActive !== true) { axis.theta = axis.theta || 0; }
                 const loc = pxToAxisMeters(xpx, ypx);
-                if (points.length === 0 && !origin) {
-                    origin = { xm: loc.xm, ym: loc.ym };
-                    originInfo.textContent = `原点: 設定済`;
+                const current = getCurrentTrack();
+                if (current.points.length === 0 && !current.origin) {
+                    current.origin = { xm: loc.xm, ym: loc.ym };
+                    originInfo.textContent = '原点: 設定済み';
                 }
-                const xm = loc.xm - (origin?.xm ?? 0);
-                const ym = loc.ym - (origin?.ym ?? 0);
+                const xm = loc.xm - (current.origin?.xm ?? 0);
+                const ym = loc.ym - (current.origin?.ym ?? 0);
 
-                points.push({ t, xpx, ypx, xm, ym });
-                points.sort((a, b) => a.t - b.t);
-                kPoints.textContent = points.length;
-                if (points.length > 1) kTime.textContent = (points[points.length - 1].t - points[0].t).toFixed(3);
+                current.points.push({ t, xpx, ypx, xm, ym });
+                current.points.sort((a, b) => a.t - b.t);
+                refreshCurrentTrackInfo();
                 recompute();
                 drawFrame();
             }
 
             function recompute() {
+                const points = getCurrentPoints();
                 if (points.length === 0) { renderTable([], [], [], [], [], [], []); updateMainChart([], [], [], [], [], [], []); return; }
                 const t = points.map(p => p.t);
                 const x = points.map(p => p.xm);
@@ -757,8 +803,8 @@
                     case 'yt': data = y; ylabel = 'y [m]'; break;
                     case 'vxt': data = vx; ylabel = 'vx [m/s]'; break;
                     case 'vyt': data = vy; ylabel = 'vy [m/s]'; break;
-                    case 'axt': data = ax; ylabel = 'ax [m/s²]'; break;
-                    case 'ayt': data = ay; ylabel = 'ay [m/s²]'; break;
+                    case 'axt': data = ax; ylabel = 'ax [m/s^2]'; break;
+                    case 'ayt': data = ay; ylabel = 'ay [m/s^2]'; break;
                 }
                 if (t && t.length > 0 && data && data.length > 0) {
                     const scatterData = t.map((timeVal, i) => ({ x: timeVal, y: data[i] }));
@@ -767,7 +813,8 @@
                     ch.data.datasets[0].data = [];
                 }
                 ch.data.labels = [];
-                ch.data.datasets[0].label = mode.toUpperCase();
+                const currentMeta = TRACKS.find(tk => tk.id === currentTrackId);
+                ch.data.datasets[0].label = (currentMeta?.label || '物体') + ' ' + mode.toUpperCase();
                 ch.options.scales.y.title.text = ylabel;
 
                 if (Array.isArray(data) && data.length) {
@@ -819,7 +866,7 @@
                 }
             }
 
-            // === 修正点：コマ送りロジックの刷新 ===
+            // Frame stepping
             async function stepFrame(dir) {
                 video.pause();
                 playing = false;
@@ -828,21 +875,21 @@
                 const fps = parseFloat(fpsInput.value) || 30;
                 const frameDur = 1.0 / fps;
 
-                // 1. 現在のフレーム番号を四捨五入で推定 (最も近いフレーム)
+                // Current frame index
                 let currentFrameIndex = Math.round(video.currentTime * fps);
 
-                // 2. 次のフレーム番号
+                // Next frame index
                 let nextFrameIndex = currentFrameIndex + dir;
 
-                // 3. 次のフレームの「時間」を計算
-                // 重要: フレーム開始直後(0%)ではなく、少し経過した地点(5%～10%)を狙う
-                // これにより浮動小数点の誤差で「前のフレーム」判定されるのを防ぐ
+                // Target seek time (slightly inside frame)
+                // Seek slightly inside the target frame to avoid edge ambiguity
+                // This improves consistency on some browser decoders
                 let targetTime = (nextFrameIndex * frameDur) + (frameDur * 0.05);
 
-                // 4. 動画範囲内に収める
+                // Clamp to valid time range
                 targetTime = Math.max(0, Math.min(targetTime, video.duration - 0.001));
 
-                // 動かない場合（最終フレームなど）は処理終了
+                // No-op if time is unchanged
                 if (Math.abs(targetTime - video.currentTime) < 0.0001) return;
 
                 return seekTo(targetTime);
@@ -867,7 +914,7 @@
 
             btnCalib.onclick = () => {
                 calibMode = true; calibDragging = false; calibStart = calibEnd = null;
-                btnCalib.disabled = true; scaleInfo.textContent = 'ドラッグして1m指定';
+                btnCalib.disabled = true; scaleInfo.textContent = 'ドラッグして基準長さを指定';
             };
             btnAxis.onclick = () => {
                 axisMode = true; axisActive = false;
@@ -880,28 +927,31 @@
                 drawFrame();
             };
             btnUndo.onclick = async () => {
+                const points = getCurrentPoints();
                 if (points.length) {
                     points.pop();
-                    kPoints.textContent = points.length;
+                    refreshCurrentTrackInfo();
                     recompute();
-                    // 戻る時も新しいロジックで戻る
+                    // Undoしたら1フレーム戻す
                     await stepFrame(-1);
                 }
             };
             btnClear.onclick = () => {
-                if (confirm('記録を消去しますか？')) {
-                    points = []; origin = null; calibMode = false; calibDragging = false; calibStart = calibEnd = null;
+                if (confirm('記録データを消去しますか？')) {
+                    tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                    calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                     axisActive = false; axisMode = false;
                     btnAxis.disabled = true;
                     btnStartPlot.disabled = true;
                     kPoints.textContent = '0'; kTime.textContent = '0.000'; originInfo.textContent = '原点:未設定';
                     scaleInfo.textContent = '未校正'; kScale.textContent = '—';
-                    drawFrame(); recompute();
+                    drawFrame(); recompute(); refreshCurrentTrackInfo();
                 }
             };
 
             const downloadCSV = () => {
-                if (!points.length) return alert("データがありません");
+                const points = getCurrentPoints();
+                if (!points.length) return alert('データがありません');
                 let csv = "t[s],x[m],y[m],vx[m/s],vy[m/s],ax[m/s^2],ay[m/s^2]\n";
                 const t = points.map(p => p.t);
                 const x = points.map(p => p.xm);
@@ -916,7 +966,7 @@
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = 'motion_data.csv'; a.click();
+                a.href = url; a.download = `motion_data_${currentTrackId}.csv`; a.click();
             };
             btnCSV.onclick = downloadCSV;
             if (btnCSVMobile) btnCSVMobile.onclick = downloadCSV;
@@ -929,13 +979,23 @@
             modeButtons.forEach(btn => {
                 btn.onclick = () => { mode = btn.dataset.mode; recompute(); };
             });
+            if (trackSelect) {
+                trackSelect.value = currentTrackId;
+                trackSelect.onchange = () => {
+                    currentTrackId = trackSelect.value;
+                    refreshCurrentTrackInfo();
+                    recompute();
+                    drawFrame();
+                    updateCursorFromVideo();
+                };
+            }
 
             file.addEventListener('change', async (e) => {
                 if (!e.target.files || !e.target.files[0]) return;
                 await loadVideo(URL.createObjectURL(e.target.files[0]));
             });
             btnDemo.onclick = async () => {
-                try { await loadVideo(DEMO_URL); } catch (e) { alert("デモ動画エラー"); }
+                try { await loadVideo(DEMO_URL); } catch (e) { alert('デモ動画を読み込めませんでした'); }
             };
 
             async function loadVideo(url) {
@@ -950,8 +1010,11 @@
                 drawFrame();
             }
 
-            function resetAll() {
-                points = []; origin = null; scalePxPerMeter = null; calibMode = false; calibDragging = false;
+            function resetAllLegacy() {
+                tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                currentTrackId = 'obj1';
+                if (trackSelect) trackSelect.value = currentTrackId;
+                scalePxPerMeter = null; calibMode = false; calibDragging = false;
                 axisActive = false; axisMode = false; axis.theta = 0;
                 btnAxis.disabled = true; btnStartPlot.disabled = true;
                 kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—';
@@ -960,8 +1023,30 @@
                 recompute();
             }
 
+            function resetAll() {
+                tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                currentTrackId = 'obj1';
+                if (trackSelect) trackSelect.value = currentTrackId;
+                scalePxPerMeter = null;
+                calibMode = false;
+                calibDragging = false;
+                axisActive = false;
+                axisMode = false;
+                axis.theta = 0;
+                btnAxis.disabled = true;
+                btnStartPlot.disabled = true;
+                kScale.textContent = '—';
+                scaleInfo.textContent = '未校正';
+                refreshCurrentTrackInfo();
+                ch.data.labels = [];
+                ch.data.datasets[0].data = [];
+                ch.update();
+                recompute();
+            }
+
             function renderTable(t, x, y, vx, vy, ax, ay) {
                 const tb = document.getElementById('tableBody'); if (!tb) return;
+                const points = getCurrentPoints();
                 let html = '';
                 for (let i = 0; i < points.length; i++) {
                     html += `<tr><td>${i}</td><td>${(t[i] ?? NaN).toFixed(3)}</td><td>${(x[i] ?? NaN).toFixed(3)}</td><td>${(y[i] ?? NaN).toFixed(3)}</td><td>${(vx[i] ?? NaN).toFixed(2)}</td><td>${(vy[i] ?? NaN).toFixed(2)}</td></tr>`;
@@ -975,6 +1060,7 @@
 
             video.addEventListener('timeupdate', () => { if (video.paused) updateCursorFromVideo(); });
             function updateCursorFromVideo() {
+                const points = getCurrentPoints();
                 if (isDraggingGraph || !points.length || !ch.scales.x) return;
                 const val = video.currentTime;
                 const x = ch.scales.x.getPixelForValue(val);
@@ -990,6 +1076,7 @@
             }
 
             chartBox.addEventListener('pointerdown', (e) => {
+                const points = getCurrentPoints();
                 if (!points.length) return;
                 isDraggingGraph = true;
                 video.pause();
@@ -1054,3 +1141,4 @@
 </body>
 
 </html>
+
