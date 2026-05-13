@@ -647,6 +647,7 @@
             let calibMode = false;
             let playing = false;
             let chartTrackVisible = { obj1: true, obj2: true };
+            let mode = 'xt';
 
             // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
@@ -667,6 +668,41 @@
                     ctx.restore();
                 }
             };
+            const customYAxisTitlePlugin = {
+                id: 'customYAxisTitle',
+                afterDraw(chart) {
+                    const parts = getYAxisLabelParts();
+                    if (!chart.chartArea || !parts) return;
+                    const { ctx, chartArea } = chart;
+                    const baseFont = '12px system-ui, -apple-system, sans-serif';
+                    const subFont = '9px system-ui, -apple-system, sans-serif';
+                    const unitFont = baseFont;
+                    ctx.save();
+                    ctx.fillStyle = '#000';
+                    ctx.textBaseline = 'middle';
+                    ctx.translate(Math.max(12, chartArea.left - 46), (chartArea.top + chartArea.bottom) / 2);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.font = baseFont;
+                    const baseWidth = ctx.measureText(parts.base).width;
+                    ctx.font = parts.sub ? subFont : baseFont;
+                    const subWidth = parts.sub ? ctx.measureText(parts.sub).width : 0;
+                    ctx.font = unitFont;
+                    const unitWidth = ctx.measureText(parts.unit).width;
+                    const totalWidth = baseWidth + subWidth + unitWidth;
+                    let x = -totalWidth / 2;
+                    ctx.font = baseFont;
+                    ctx.fillText(parts.base, x, 0);
+                    x += baseWidth;
+                    if (parts.sub) {
+                        ctx.font = subFont;
+                        ctx.fillText(parts.sub, x, 4);
+                        x += subWidth;
+                    }
+                    ctx.font = unitFont;
+                    ctx.fillText(parts.unit, x, 0);
+                    ctx.restore();
+                }
+            };
             const ch = new Chart(document.getElementById('chart_main'), {
                 type: 'line',
                 data: { labels: [], datasets: [] },
@@ -674,13 +710,13 @@
                     animation: false, responsive: true, maintainAspectRatio: false,
                     scales: {
                         x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } },
-                        y: { title: { display: true, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
+                        y: { title: { display: false, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
                     },
-                    plugins: { legend: { display: false } }
+                    plugins: { legend: { display: false } },
+                    layout: { padding: { left: 16 } }
                 },
-                plugins: [chartBgPlugin]
+                plugins: [chartBgPlugin, customYAxisTitlePlugin]
             });
-            let mode = 'xt';
 
             function getCurrentTrack() {
                 return tracks[currentTrackId];
@@ -1001,12 +1037,24 @@
             function getChartDataByMode(series) {
                 switch (mode) {
                     case 'yt': return { data: series.y, ylabel: 'y [m]' };
-                    case 'vxt': return { data: series.vx, ylabel: 'vx [m/s]' };
-                    case 'vyt': return { data: series.vy, ylabel: 'vy [m/s]' };
-                    case 'axt': return { data: series.ax, ylabel: 'ax [m/s^2]' };
-                    case 'ayt': return { data: series.ay, ylabel: 'ay [m/s^2]' };
+                    case 'vxt': return { data: series.vx, ylabel: 'vₓ [m/s]' };
+                    case 'vyt': return { data: series.vy, ylabel: 'vᵧ [m/s]' };
+                    case 'axt': return { data: series.ax, ylabel: 'aₓ [m/s²]' };
+                    case 'ayt': return { data: series.ay, ylabel: 'aᵧ [m/s²]' };
                     case 'xt':
                     default: return { data: series.x, ylabel: 'x [m]' };
+                }
+            }
+
+            function getYAxisLabelParts() {
+                switch (mode) {
+                    case 'yt': return { base: 'y', sub: '', unit: ' [m]' };
+                    case 'vxt': return { base: 'v', sub: 'x', unit: ' [m/s]' };
+                    case 'vyt': return { base: 'v', sub: 'y', unit: ' [m/s]' };
+                    case 'axt': return { base: 'a', sub: 'x', unit: ' [m/s²]' };
+                    case 'ayt': return { base: 'a', sub: 'y', unit: ' [m/s²]' };
+                    case 'xt':
+                    default: return { base: 'x', sub: '', unit: ' [m]' };
                 }
             }
 
