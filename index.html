@@ -65,21 +65,23 @@
 
         /* --- Main Layout --- */
         .app-grid {
+            --data-panel-width: 360px;
             display: flex;
             flex: 1;
             overflow: hidden;
+            min-width: 0;
         }
 
         /* --- Left Panel (Video & Tools) --- */
         .video-panel {
-            flex: 1;
+            flex: 1 1 auto;
             display: flex;
             flex-direction: column;
             background: #000;
             position: relative;
             overflow: hidden;
             border-right: 1px solid var(--border);
-            min-width: 0;
+            min-width: 180px;
         }
 
         .canvas-wrapper {
@@ -94,9 +96,26 @@
         }
 
         canvas {
+            display: block;
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+            touch-action: none;
+        }
+
+        .splitter {
+            width: 10px;
+            flex: 0 0 10px;
+            background: linear-gradient(90deg, transparent 0, transparent 4px, var(--border) 4px, var(--border) 6px, transparent 6px);
+            cursor: col-resize;
+            touch-action: none;
+            user-select: none;
+            z-index: 20;
+        }
+
+        .splitter:hover,
+        .splitter.dragging {
+            background: linear-gradient(90deg, transparent 0, transparent 3px, var(--primary) 3px, var(--primary) 7px, transparent 7px);
         }
 
         /* Video Toolbar */
@@ -124,7 +143,9 @@
 
         /* --- Right Panel (Data) --- */
         .data-panel {
-            width: 360px;
+            width: var(--data-panel-width);
+            min-width: 220px;
+            max-width: calc(100% - 190px);
             background: var(--bg-app);
             display: flex;
             flex-direction: column;
@@ -135,19 +156,35 @@
 
         .scroll-area {
             flex: 1;
-            overflow-y: auto;
+            overflow: hidden;
             padding: 12px;
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-height: 0;
             -webkit-overflow-scrolling: touch;
         }
 
         /* KPI Cards */
+        .kpi-toggle {
+            align-self: flex-start;
+            background: #334155;
+            color: #fff;
+            border: 1px solid var(--border);
+            padding: 5px 9px;
+            font-size: 12px;
+            line-height: 1;
+        }
+
         .kpi-grid {
-            display: grid;
+            display: none;
             grid-template-columns: repeat(2, 1fr);
             gap: 8px;
+            flex: 0 0 auto;
+        }
+
+        .kpi-grid.expanded {
+            display: grid;
         }
 
         .kpi-card {
@@ -174,7 +211,9 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
-            min-height: 220px;
+            flex: 1 1 auto;
+            min-height: 160px;
+            min-width: 0;
         }
 
         .chart-controls {
@@ -184,18 +223,55 @@
             padding-bottom: 2px;
         }
 
+        .chart-legend {
+            display: none;
+            gap: 12px;
+            align-items: center;
+            color: var(--text-main);
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+
+        .chart-legend.visible {
+            display: flex;
+        }
+
+        .chart-legend label {
+            display: inline-flex;
+            gap: 5px;
+            align-items: center;
+            white-space: nowrap;
+        }
+
         .chart-container {
             position: relative;
-            height: 200px;
-            background: var(--bg-panel);
+            flex: 1 1 auto;
+            min-height: 0;
+            background: #fff;
             border: 1px solid var(--border);
             border-radius: var(--radius);
             touch-action: none;
         }
 
+        .table-resizer {
+            height: 10px;
+            flex: 0 0 10px;
+            margin: -4px 0;
+            background: linear-gradient(180deg, transparent 0, transparent 4px, var(--border) 4px, var(--border) 6px, transparent 6px);
+            cursor: row-resize;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .table-resizer:hover,
+        .table-resizer.dragging {
+            background: linear-gradient(180deg, transparent 0, transparent 3px, var(--primary) 3px, var(--primary) 7px, transparent 7px);
+        }
+
         /* Table Section */
         .table-section {
-            height: 200px;
+            flex: 0 0 var(--table-section-height, 200px);
+            min-height: 80px;
             background: var(--bg-panel);
             border: 1px solid var(--border);
             border-radius: var(--radius);
@@ -321,39 +397,42 @@
         /* --- Responsive --- */
         @media (max-width: 820px) {
             body {
-                height: auto;
-                overflow: auto;
-                display: block;
+                height: 100vh;
+                height: 100dvh;
+                overflow: hidden;
+                display: flex;
             }
 
             .app-grid {
-                display: block;
-                height: auto;
-                overflow: visible;
+                display: flex;
+                height: calc(100dvh - var(--header-h));
+                overflow: hidden;
             }
 
             .video-panel {
                 height: auto;
-                border-right: none;
-                border-bottom: 1px solid var(--border);
-                position: sticky;
-                top: 0;
-                z-index: 100;
+                border-right: 1px solid var(--border);
+                border-bottom: none;
+                position: relative;
+                top: auto;
+                z-index: 1;
+                min-width: 140px;
             }
 
             .canvas-wrapper {
-                aspect-ratio: 16/9;
-                max-height: 50vh;
+                min-height: 160px;
             }
 
             .data-panel {
-                width: 100%;
+                width: var(--data-panel-width);
+                min-width: 200px;
+                max-width: calc(100% - 150px);
                 height: auto;
-                border-left: none;
+                border-left: 1px solid var(--border);
             }
 
             .scroll-area {
-                overflow: visible;
+                overflow: hidden;
             }
 
             .header-controls {
@@ -438,9 +517,12 @@
             </div>
         </div>
 
+        <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="表示領域の幅を調整"></div>
+
         <div class="data-panel">
             <div class="scroll-area">
-                <div class="kpi-grid">
+                <button id="btnKpiToggle" class="kpi-toggle" aria-expanded="false">情報を表示</button>
+                <div id="kpiGrid" class="kpi-grid" aria-hidden="true">
                     <div class="kpi-card">
                         <div class="kpi-label">記録点数</div>
                         <div id="kPoints" class="kpi-val">0</div>
@@ -469,11 +551,17 @@
                         <button class="modeBtn" data-mode="ayt" style="padding:4px 8px; font-size:11px;">ay</button>
                         <button id="btnPNGCurrent" style="margin-left:auto; padding:4px 6px; font-size:10px;">画像</button>
                     </div>
+                    <div id="chartLegend" class="chart-legend" aria-hidden="true">
+                        <label><input type="checkbox" class="chartTrackToggle" value="obj1" checked>物体1</label>
+                        <label><input type="checkbox" class="chartTrackToggle" value="obj2" checked>物体2</label>
+                    </div>
                     <div id="chartBox" class="chart-container">
                         <canvas id="chart_main"></canvas>
                         <div id="time-cursor"></div>
                     </div>
                 </div>
+
+                <div id="tableResizer" class="table-resizer" role="separator" aria-orientation="horizontal" aria-label="グラフと表の高さを調整"></div>
 
                 <div class="table-section">
                     <table id="dataTable">
@@ -507,6 +595,19 @@
             const DEMO_URL = "./demo_faststart.mp4";
 
             // DOM refs
+            const appGrid = document.querySelector('.app-grid');
+            const videoPanel = document.querySelector('.video-panel');
+            const canvasWrapper = document.querySelector('.canvas-wrapper');
+            const dataPanel = document.querySelector('.data-panel');
+            const splitter = document.getElementById('splitter');
+            const btnKpiToggle = document.getElementById('btnKpiToggle');
+            const kpiGrid = document.getElementById('kpiGrid');
+            const tableResizer = document.getElementById('tableResizer');
+            const tableSection = document.querySelector('.table-section');
+            const chartBox = document.getElementById('chartBox');
+            const chartLegend = document.getElementById('chartLegend');
+            const chartTrackToggles = document.querySelectorAll('.chartTrackToggle');
+            const cursor = document.getElementById('time-cursor');
             const file = document.getElementById('file');
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
@@ -545,6 +646,7 @@
             let scalePxPerMeter = null;
             let calibMode = false;
             let playing = false;
+            let chartTrackVisible = { obj1: true, obj2: true };
 
             // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
@@ -555,17 +657,28 @@
             const AXIS_HANDLE_LEN = 80;
 
             // Chart
+            const chartBgPlugin = {
+                id: 'chartBg',
+                beforeDraw(chart) {
+                    const { ctx, width, height } = chart;
+                    ctx.save();
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.restore();
+                }
+            };
             const ch = new Chart(document.getElementById('chart_main'), {
                 type: 'line',
-                data: { labels: [], datasets: [{ label: 'x-t', data: [], pointRadius: 2, tension: 0, borderColor: '#3b82f6', backgroundColor: '#3b82f6' }] },
+                data: { labels: [], datasets: [] },
                 options: {
                     animation: false, responsive: true, maintainAspectRatio: false,
                     scales: {
-                        x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                        y: { title: { display: true, text: '', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+                        x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } },
+                        y: { title: { display: true, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
                     },
                     plugins: { legend: { display: false } }
-                }
+                },
+                plugins: [chartBgPlugin]
             });
             let mode = 'xt';
 
@@ -589,18 +702,55 @@
                 originInfo.textContent = current.origin ? '原点: 設定済み' : '原点:未設定';
             }
 
+            function fitCanvasToWrapper() {
+                const vw = canvas.width || video.videoWidth || 640;
+                const vh = canvas.height || video.videoHeight || 360;
+                const rect = canvasWrapper.getBoundingClientRect();
+                if (!rect.width || !rect.height || !vw || !vh) return;
+
+                const fit = Math.min(rect.width / vw, rect.height / vh);
+                canvas.style.width = `${Math.max(1, Math.floor(vw * fit))}px`;
+                canvas.style.height = `${Math.max(1, Math.floor(vh * fit))}px`;
+            }
+
+            function refreshResponsiveLayout() {
+                fitCanvasToWrapper();
+                drawFrame();
+                if (ch) {
+                    ch.resize();
+                    ch.update('none');
+                }
+                updateCursorFromVideo();
+            }
+
             function resizeCanvasToVideo() {
-                const container = canvas.parentElement;
                 const vw = video.videoWidth || 640;
                 const vh = video.videoHeight || 360;
-                canvas.width = vw;
-                canvas.height = vh;
+                if (canvas.width !== vw) canvas.width = vw;
+                if (canvas.height !== vh) canvas.height = vh;
                 if (axis.ox === 0 && axis.oy === 0) {
                     axis.ox = vw / 2; axis.oy = vh / 2;
                 }
-                drawFrame();
+                refreshResponsiveLayout();
             }
-            window.addEventListener('resize', () => { setTimeout(resizeCanvasToVideo, 100); });
+            window.addEventListener('resize', () => {
+                setTimeout(() => {
+                    setDataPanelWidth(currentDataPanelWidth());
+                    refreshResponsiveLayout();
+                }, 100);
+            });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => {
+                    setTimeout(refreshResponsiveLayout, 100);
+                });
+            }
+            if ('ResizeObserver' in window) {
+                const layoutObserver = new ResizeObserver(() => refreshResponsiveLayout());
+                layoutObserver.observe(canvasWrapper);
+                layoutObserver.observe(dataPanel);
+                layoutObserver.observe(chartBox);
+                layoutObserver.observe(tableSection);
+            }
             if (window.innerWidth < 820 && btnCSVMobile) btnCSVMobile.style.display = 'block';
 
             function drawInfiniteLine(point, dir, color, width = 2) {
@@ -674,14 +824,19 @@
 
             let mousePos = { x: 0, y: 0 };
 
-            function getXY(evt) {
+            function getCanvasVideoPoint(evt) {
                 const rect = canvas.getBoundingClientRect();
                 const clientX = evt.clientX - rect.left;
                 const clientY = evt.clientY - rect.top;
                 const scaleX = canvas.width / rect.width;
                 const scaleY = canvas.height / rect.height;
-                return { x: clientX * scaleX, y: clientY * scaleY };
+                return {
+                    x: Math.max(0, Math.min(canvas.width, clientX * scaleX)),
+                    y: Math.max(0, Math.min(canvas.height, clientY * scaleY))
+                };
             }
+
+            const getXY = getCanvasVideoPoint;
 
             let dragMode = null;
             function hitCircle(px, py, cx, cy, r) { return Math.hypot(px - cx, py - cy) <= r; }
@@ -784,7 +939,7 @@
 
             function recompute() {
                 const points = getCurrentPoints();
-                if (points.length === 0) { renderTable([], [], [], [], [], [], []); updateMainChart([], [], [], [], [], [], []); return; }
+                if (points.length === 0) { renderTable([], [], [], [], [], [], []); updateMainChart(); return; }
                 const t = points.map(p => p.t);
                 const x = points.map(p => p.xm);
                 const y = points.map(p => p.ym);
@@ -793,7 +948,7 @@
                 const ax = diffCentral(t, vx);
                 const ay = diffCentral(t, vy);
                 renderTable(t, x, y, vx, vy, ax, ay);
-                updateMainChart(t, x, y, vx, vy, ax, ay);
+                updateMainChart();
             }
 
             function updateMainChart(t, x, y, vx, vy, ax, ay) {
@@ -826,6 +981,96 @@
                     else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
                     ch.options.scales.y.min = lo; ch.options.scales.y.max = hi;
                 } else { ch.options.scales.y.min = -1; ch.options.scales.y.max = 1; }
+                ch.update();
+                modeButtons.forEach(b => {
+                    b.style.backgroundColor = (b.dataset.mode === mode) ? '#2563eb' : '#334155';
+                });
+            }
+
+            function getChartSeries(points) {
+                const t = points.map(p => p.t);
+                const x = points.map(p => p.xm);
+                const y = points.map(p => p.ym);
+                const vx = diffCentral(t, x);
+                const vy = diffCentral(t, y);
+                const ax = diffCentral(t, vx);
+                const ay = diffCentral(t, vy);
+                return { t, x, y, vx, vy, ax, ay };
+            }
+
+            function getChartDataByMode(series) {
+                switch (mode) {
+                    case 'yt': return { data: series.y, ylabel: 'y [m]' };
+                    case 'vxt': return { data: series.vx, ylabel: 'vx [m/s]' };
+                    case 'vyt': return { data: series.vy, ylabel: 'vy [m/s]' };
+                    case 'axt': return { data: series.ax, ylabel: 'ax [m/s^2]' };
+                    case 'ayt': return { data: series.ay, ylabel: 'ay [m/s^2]' };
+                    case 'xt':
+                    default: return { data: series.x, ylabel: 'x [m]' };
+                }
+            }
+
+            function getTrackDisplayName(trackId) {
+                return trackId === 'obj2' ? '物体2' : '物体1';
+            }
+
+            function getTrackChartColor(trackId) {
+                return trackId === 'obj2' ? '#dc2626' : '#2563eb';
+            }
+
+            function updateChartLegend() {
+                const hasObject2 = getTrackById('obj2').points.length > 0;
+                chartLegend.classList.toggle('visible', hasObject2);
+                chartLegend.setAttribute('aria-hidden', hasObject2 ? 'false' : 'true');
+                if (!hasObject2) chartTrackVisible.obj1 = true;
+                chartTrackToggles.forEach(toggle => {
+                    toggle.checked = chartTrackVisible[toggle.value] !== false;
+                });
+            }
+
+            function updateMainChart() {
+                updateChartLegend();
+                let ylabel = 'x [m]';
+                let dmin = Infinity, dmax = -Infinity;
+                ch.data.labels = [];
+                ch.data.datasets = [];
+
+                TRACKS.forEach(trackMeta => {
+                    const points = getTrackById(trackMeta.id).points;
+                    if (!points.length || chartTrackVisible[trackMeta.id] === false) return;
+                    const series = getChartSeries(points);
+                    const selected = getChartDataByMode(series);
+                    ylabel = selected.ylabel;
+                    const color = getTrackChartColor(trackMeta.id);
+                    const scatterData = series.t.map((timeVal, i) => {
+                        const value = selected.data[i];
+                        if (Number.isFinite(value)) {
+                            dmin = Math.min(dmin, value);
+                            dmax = Math.max(dmax, value);
+                        }
+                        return { x: timeVal, y: value };
+                    });
+                    ch.data.datasets.push({
+                        label: `${getTrackDisplayName(trackMeta.id)} ${mode.toUpperCase()}`,
+                        data: scatterData,
+                        pointRadius: 2,
+                        tension: 0,
+                        borderColor: color,
+                        backgroundColor: color
+                    });
+                });
+
+                ch.options.scales.y.title.text = ylabel;
+                if (ch.data.datasets.length) {
+                    if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin = -1; dmax = 1; }
+                    let lo = Math.min(0, dmin), hi = Math.max(0, dmax);
+                    if (Math.abs(hi - lo) < 1e-6) { const pad = (Math.abs(hi) || 1) * 0.5; lo -= pad; hi += pad; }
+                    else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
+                    ch.options.scales.y.min = lo; ch.options.scales.y.max = hi;
+                } else {
+                    ch.options.scales.y.min = -1;
+                    ch.options.scales.y.max = 1;
+                }
                 ch.update();
                 modeButtons.forEach(b => {
                     b.style.backgroundColor = (b.dataset.mode === mode) ? '#2563eb' : '#334155';
@@ -939,6 +1184,7 @@
             btnClear.onclick = () => {
                 if (confirm('記録データを消去しますか？')) {
                     tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                    chartTrackVisible = { obj1: true, obj2: true };
                     calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                     axisActive = false; axisMode = false;
                     btnAxis.disabled = true;
@@ -979,6 +1225,12 @@
             modeButtons.forEach(btn => {
                 btn.onclick = () => { mode = btn.dataset.mode; recompute(); };
             });
+            chartTrackToggles.forEach(toggle => {
+                toggle.onchange = () => {
+                    chartTrackVisible[toggle.value] = toggle.checked;
+                    updateMainChart();
+                };
+            });
             if (trackSelect) {
                 trackSelect.value = currentTrackId;
                 trackSelect.onchange = () => {
@@ -1012,6 +1264,7 @@
 
             function resetAllLegacy() {
                 tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                chartTrackVisible = { obj1: true, obj2: true };
                 currentTrackId = 'obj1';
                 if (trackSelect) trackSelect.value = currentTrackId;
                 scalePxPerMeter = null; calibMode = false; calibDragging = false;
@@ -1019,12 +1272,13 @@
                 btnAxis.disabled = true; btnStartPlot.disabled = true;
                 kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—';
                 scaleInfo.textContent = '未校正'; originInfo.textContent = '原点:未設定';
-                ch.data.labels = []; ch.data.datasets[0].data = []; ch.update();
+                ch.data.labels = []; ch.data.datasets = []; ch.update();
                 recompute();
             }
 
             function resetAll() {
                 tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
+                chartTrackVisible = { obj1: true, obj2: true };
                 currentTrackId = 'obj1';
                 if (trackSelect) trackSelect.value = currentTrackId;
                 scalePxPerMeter = null;
@@ -1039,7 +1293,7 @@
                 scaleInfo.textContent = '未校正';
                 refreshCurrentTrackInfo();
                 ch.data.labels = [];
-                ch.data.datasets[0].data = [];
+                ch.data.datasets = [];
                 ch.update();
                 recompute();
             }
@@ -1054,9 +1308,120 @@
                 tb.innerHTML = html;
             }
 
-            const cursor = document.getElementById('time-cursor');
-            const chartBox = document.getElementById('chartBox');
             let isDraggingGraph = false;
+            let isResizingPanels = false;
+            let isResizingTable = false;
+            let resizeFrame = 0;
+
+            function getPanelLimits() {
+                const gridWidth = appGrid.getBoundingClientRect().width;
+                const splitterWidth = splitter.getBoundingClientRect().width || 10;
+                const minVideo = window.innerWidth < 820 ? 140 : 180;
+                const minData = window.innerWidth < 820 ? 200 : 220;
+                return {
+                    min: Math.min(minData, Math.max(120, gridWidth - minVideo - splitterWidth)),
+                    max: Math.max(minData, gridWidth - minVideo - splitterWidth)
+                };
+            }
+
+            function clampDataPanelWidth(width) {
+                const limits = getPanelLimits();
+                return Math.max(limits.min, Math.min(limits.max, width));
+            }
+
+            function setDataPanelWidth(width) {
+                const nextWidth = clampDataPanelWidth(width);
+                appGrid.style.setProperty('--data-panel-width', `${nextWidth}px`);
+                if (!resizeFrame) {
+                    resizeFrame = requestAnimationFrame(() => {
+                        resizeFrame = 0;
+                        refreshResponsiveLayout();
+                    });
+                }
+            }
+
+            function currentDataPanelWidth() {
+                return dataPanel.getBoundingClientRect().width || 360;
+            }
+
+            setDataPanelWidth(currentDataPanelWidth());
+
+            function getTableHeightLimits() {
+                const parent = tableSection.parentElement;
+                const scrollRect = parent.getBoundingClientRect();
+                const minTable = 80;
+                const minChart = 160;
+                const children = Array.from(parent.children);
+                const gap = parseFloat(getComputedStyle(parent).rowGap || getComputedStyle(parent).gap) || 0;
+                const reserved = children.reduce((sum, el) => {
+                    if (el === tableSection || el.classList.contains('chart-section')) return sum;
+                    return sum + el.getBoundingClientRect().height;
+                }, gap * Math.max(0, children.length - 1));
+                const available = Math.max(minTable, scrollRect.height - reserved - minChart);
+                return { min: minTable, max: Math.max(minTable, available) };
+            }
+
+            function clampTableHeight(height) {
+                const limits = getTableHeightLimits();
+                return Math.max(limits.min, Math.min(limits.max, height));
+            }
+
+            function setTableHeight(height) {
+                const nextHeight = clampTableHeight(height);
+                tableSection.parentElement.style.setProperty('--table-section-height', `${nextHeight}px`);
+                if (!resizeFrame) {
+                    resizeFrame = requestAnimationFrame(() => {
+                        resizeFrame = 0;
+                        refreshResponsiveLayout();
+                    });
+                }
+            }
+
+            function currentTableHeight() {
+                return tableSection.getBoundingClientRect().height || 200;
+            }
+
+            setTableHeight(currentTableHeight());
+
+            btnKpiToggle.addEventListener('click', () => {
+                const expanded = !kpiGrid.classList.contains('expanded');
+                kpiGrid.classList.toggle('expanded', expanded);
+                kpiGrid.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+                btnKpiToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                btnKpiToggle.textContent = expanded ? '情報を隠す' : '情報を表示';
+                setTableHeight(currentTableHeight());
+                refreshResponsiveLayout();
+            });
+
+            splitter.addEventListener('pointerdown', (e) => {
+                isResizingPanels = true;
+                splitter.classList.add('dragging');
+                document.body.style.cursor = 'col-resize';
+                e.preventDefault();
+                if (splitter.setPointerCapture) splitter.setPointerCapture(e.pointerId);
+            }, { passive: false });
+
+            splitter.addEventListener('pointercancel', () => {
+                isResizingPanels = false;
+                splitter.classList.remove('dragging');
+                document.body.style.cursor = '';
+                refreshResponsiveLayout();
+            });
+
+            tableResizer.addEventListener('pointerdown', (e) => {
+                isResizingTable = true;
+                tableResizer.classList.add('dragging');
+                document.body.style.cursor = 'row-resize';
+                e.preventDefault();
+                if (tableResizer.setPointerCapture) tableResizer.setPointerCapture(e.pointerId);
+            }, { passive: false });
+
+            tableResizer.addEventListener('pointercancel', () => {
+                isResizingTable = false;
+                tableResizer.classList.remove('dragging');
+                document.body.style.cursor = '';
+                refreshResponsiveLayout();
+            });
 
             video.addEventListener('timeupdate', () => { if (video.paused) updateCursorFromVideo(); });
             function updateCursorFromVideo() {
@@ -1086,6 +1451,18 @@
             });
 
             window.addEventListener('pointermove', (e) => {
+                if (isResizingPanels) {
+                    const gridRect = appGrid.getBoundingClientRect();
+                    setDataPanelWidth(gridRect.right - e.clientX);
+                    e.preventDefault();
+                    return;
+                }
+                if (isResizingTable) {
+                    const tableRect = tableSection.getBoundingClientRect();
+                    setTableHeight(tableRect.bottom - e.clientY);
+                    e.preventDefault();
+                    return;
+                }
                 if (isDraggingGraph) {
                     e.preventDefault();
                     syncVideoToGraphMouse(e);
@@ -1093,6 +1470,26 @@
             });
 
             window.addEventListener('pointerup', (e) => {
+                if (isResizingPanels) {
+                    isResizingPanels = false;
+                    splitter.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    if (splitter.releasePointerCapture && e?.pointerId != null) {
+                        try { splitter.releasePointerCapture(e.pointerId); } catch (_) { }
+                    }
+                    refreshResponsiveLayout();
+                    return;
+                }
+                if (isResizingTable) {
+                    isResizingTable = false;
+                    tableResizer.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    if (tableResizer.releasePointerCapture && e?.pointerId != null) {
+                        try { tableResizer.releasePointerCapture(e.pointerId); } catch (_) { }
+                    }
+                    refreshResponsiveLayout();
+                    return;
+                }
                 if (isDraggingGraph) {
                     isDraggingGraph = false;
                     if (chartBox.releasePointerCapture && e?.pointerId != null) {
