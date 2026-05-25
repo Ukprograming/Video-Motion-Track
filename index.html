@@ -187,6 +187,15 @@
             display: grid;
         }
 
+        .kpi-card.wide {
+            grid-column: 1 / -1;
+        }
+
+        .kpi-card input {
+            width: 100%;
+            margin-top: 4px;
+        }
+
         .kpi-card {
             background: var(--bg-panel);
             padding: 8px 10px;
@@ -208,6 +217,7 @@
 
         /* Chart Section */
         .chart-section {
+            position: relative;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -221,6 +231,49 @@
             gap: 4px;
             overflow-x: auto;
             padding-bottom: 2px;
+        }
+
+        .chart-tools {
+            display: flex;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        .chart-section.graph-only {
+            min-height: 100%;
+        }
+
+        .scroll-area.graph-only {
+            gap: 0;
+        }
+
+        .scroll-area.graph-only > :not(.chart-section) {
+            display: none;
+        }
+
+        .scroll-area.graph-only .chart-controls,
+        .scroll-area.graph-only .chart-legend {
+            display: none !important;
+        }
+
+        .graph-only-restore {
+            display: none;
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            z-index: 5;
+            padding: 4px 8px;
+            font-size: 11px;
+            background: rgba(15, 23, 42, .88);
+            color: #fff;
+        }
+
+        .scroll-area.graph-only .graph-only-restore {
+            display: block;
+        }
+
+        .modeBtn.selected {
+            background: #2563eb !important;
         }
 
         .chart-legend {
@@ -243,14 +296,38 @@
             white-space: nowrap;
         }
 
+        .chart-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
         .chart-container {
             position: relative;
-            flex: 1 1 auto;
+            flex: 1 1 0;
             min-height: 0;
             background: #fff;
             border: 1px solid var(--border);
             border-radius: var(--radius);
             touch-action: none;
+        }
+
+        .chart-splitter {
+            height: 10px;
+            flex: 0 0 10px;
+            margin: -2px 0;
+            background: linear-gradient(180deg, transparent 0, transparent 4px, var(--border) 4px, var(--border) 6px, transparent 6px);
+            cursor: row-resize;
+            touch-action: none;
+            user-select: none;
+            z-index: 2;
+        }
+
+        .chart-splitter:hover,
+        .chart-splitter.dragging {
+            background: linear-gradient(180deg, transparent 0, transparent 3px, var(--primary) 3px, var(--primary) 7px, transparent 7px);
         }
 
         .table-resizer {
@@ -383,7 +460,7 @@
             max-width: 180px;
         }
 
-        #time-cursor {
+        .time-cursor {
             position: absolute;
             top: 0;
             bottom: 0;
@@ -464,8 +541,8 @@
             <input id="file" type="file" accept="video/*" />
         </div>
         <div class="header-controls">
-            <button id="btnDemo" class="warn" style="padding:4px 8px; font-size:11px;">デモ</button>
-            <button id="btnCSV" class="primary" style="padding:4px 8px; font-size:11px;">CSV</button>
+            <button id="btnDemo" class="warn" style="padding:4px 8px; font-size:11px;">サンプル動画</button>
+            <button id="btnCSV" class="primary" style="padding:4px 8px; font-size:11px;">csvダウンロード</button>
         </div>
     </header>
 
@@ -539,6 +616,10 @@
                         <div class="kpi-label">FPS (読取)</div>
                         <div id="kFPS" class="kpi-val">30.00</div>
                     </div>
+                    <div class="kpi-card wide">
+                        <label class="kpi-label" for="regHalfWindow">局所回帰 半窓数</label>
+                        <input id="regHalfWindow" type="number" min="1" step="1" value="1">
+                    </div>
                 </div>
 
                 <div class="chart-section">
@@ -549,16 +630,22 @@
                         <button class="modeBtn" data-mode="vyt" style="padding:4px 8px; font-size:11px;">vy</button>
                         <button class="modeBtn" data-mode="axt" style="padding:4px 8px; font-size:11px;">ax</button>
                         <button class="modeBtn" data-mode="ayt" style="padding:4px 8px; font-size:11px;">ay</button>
-                        <button id="btnPNGCurrent" style="margin-left:auto; padding:4px 6px; font-size:10px;">画像</button>
+                        <div class="chart-tools">
+                            <button id="btnGraphOnly" style="padding:4px 6px; font-size:10px;">グラフのみ</button>
+                            <button id="btnPNGCurrent" style="padding:4px 6px; font-size:10px;">画像</button>
+                        </div>
                     </div>
                     <div id="chartLegend" class="chart-legend" aria-hidden="true">
                         <label><input type="checkbox" class="chartTrackToggle" value="obj1" checked>物体1</label>
                         <label><input type="checkbox" class="chartTrackToggle" value="obj2" checked>物体2</label>
                     </div>
-                    <div id="chartBox" class="chart-container">
-                        <canvas id="chart_main"></canvas>
-                        <div id="time-cursor"></div>
+                    <div id="chartStack" class="chart-stack">
+                        <div id="chartBox" class="chart-container">
+                            <canvas id="chart_main"></canvas>
+                            <div class="time-cursor" id="time-cursor"></div>
+                        </div>
                     </div>
+                    <button id="btnGraphRestore" class="graph-only-restore">戻す</button>
                 </div>
 
                 <div id="tableResizer" class="table-resizer" role="separator" aria-orientation="horizontal" aria-label="グラフと表の高さを調整"></div>
@@ -604,10 +691,11 @@
             const kpiGrid = document.getElementById('kpiGrid');
             const tableResizer = document.getElementById('tableResizer');
             const tableSection = document.querySelector('.table-section');
-            const chartBox = document.getElementById('chartBox');
+            const scrollArea = document.querySelector('.scroll-area');
+            const chartSection = document.querySelector('.chart-section');
+            const chartStack = document.getElementById('chartStack');
             const chartLegend = document.getElementById('chartLegend');
             const chartTrackToggles = document.querySelectorAll('.chartTrackToggle');
-            const cursor = document.getElementById('time-cursor');
             const file = document.getElementById('file');
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
@@ -631,6 +719,9 @@
             const btnCSV = document.getElementById('btnCSV');
             const btnCSVMobile = document.getElementById('btnCSVMobile');
             const btnPNGCurrent = document.getElementById('btnPNGCurrent');
+            const btnGraphOnly = document.getElementById('btnGraphOnly');
+            const btnGraphRestore = document.getElementById('btnGraphRestore');
+            const regHalfWindowInput = document.getElementById('regHalfWindow');
             const btnAxis = document.getElementById('btnAxis');
             const btnStartPlot = document.getElementById('btnStartPlot');
             const trackSelect = document.getElementById('trackSelect');
@@ -647,7 +738,9 @@
             let calibMode = false;
             let playing = false;
             let chartTrackVisible = { obj1: true, obj2: true };
-            let mode = 'xt';
+            let selectedChartModes = ['xt'];
+            let chartHeightWeights = [1];
+            let regressionHalfWindow = 1;
 
             // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
@@ -671,7 +764,7 @@
             const customYAxisTitlePlugin = {
                 id: 'customYAxisTitle',
                 afterDraw(chart) {
-                    const parts = getYAxisLabelParts();
+                    const parts = getYAxisLabelParts(chart.$motionMode || 'xt');
                     if (!chart.chartArea || !parts) return;
                     const { ctx, chartArea } = chart;
                     const baseFont = '12px system-ui, -apple-system, sans-serif';
@@ -703,20 +796,73 @@
                     ctx.restore();
                 }
             };
-            const ch = new Chart(document.getElementById('chart_main'), {
-                type: 'line',
-                data: { labels: [], datasets: [] },
-                options: {
-                    animation: false, responsive: true, maintainAspectRatio: false,
-                    scales: {
-                        x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } },
-                        y: { title: { display: false, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
+            let chartViews = [];
+
+            function createMotionChart(canvasEl, chartMode) {
+                const chart = new Chart(canvasEl, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        animation: false, responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } },
+                            y: { title: { display: false, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
+                        },
+                        plugins: { legend: { display: false } },
+                        layout: { padding: { left: 16 } }
                     },
-                    plugins: { legend: { display: false } },
-                    layout: { padding: { left: 16 } }
-                },
-                plugins: [chartBgPlugin, customYAxisTitlePlugin]
-            });
+                    plugins: [chartBgPlugin, customYAxisTitlePlugin]
+                });
+                chart.$motionMode = chartMode;
+                return chart;
+            }
+
+            function ensureChartViews() {
+                const currentModes = chartViews.map(view => view.mode).join(',');
+                const nextModes = selectedChartModes.join(',');
+                if (currentModes === nextModes && chartViews.length) return;
+
+                if (chartHeightWeights.length !== selectedChartModes.length) {
+                    resetChartHeightWeights();
+                }
+                chartViews.forEach(view => view.chart.destroy());
+                chartViews = [];
+                chartStack.innerHTML = '';
+                selectedChartModes.forEach((chartMode, index) => {
+                    const box = document.createElement('div');
+                    box.className = 'chart-container';
+                    box.style.flexGrow = String(chartHeightWeights[index] || 1);
+                    const canvasEl = document.createElement('canvas');
+                    const cursorEl = document.createElement('div');
+                    cursorEl.className = 'time-cursor';
+                    box.append(canvasEl, cursorEl);
+                    chartStack.appendChild(box);
+                    const chart = createMotionChart(canvasEl, chartMode);
+                    const view = { mode: chartMode, box, cursor: cursorEl, chart };
+                    chartViews.push(view);
+                    bindChartPointer(view);
+                    if (index < selectedChartModes.length - 1) {
+                        const splitterEl = document.createElement('div');
+                        splitterEl.className = 'chart-splitter';
+                        splitterEl.setAttribute('role', 'separator');
+                        splitterEl.setAttribute('aria-orientation', 'horizontal');
+                        splitterEl.setAttribute('aria-label', 'グラフの高さを調整');
+                        bindChartResize(splitterEl, index);
+                        chartStack.appendChild(splitterEl);
+                    }
+                });
+            }
+
+            function resetChartHeightWeights() {
+                chartHeightWeights = selectedChartModes.map(() => 1);
+            }
+
+            function applyChartHeightWeights() {
+                chartViews.forEach((view, index) => {
+                    view.box.style.flexGrow = String(chartHeightWeights[index] || 1);
+                });
+                refreshResponsiveLayout();
+            }
 
             function getCurrentTrack() {
                 return tracks[currentTrackId];
@@ -752,10 +898,10 @@
             function refreshResponsiveLayout() {
                 fitCanvasToWrapper();
                 drawFrame();
-                if (ch) {
-                    ch.resize();
-                    ch.update('none');
-                }
+                chartViews.forEach(view => {
+                    view.chart.resize();
+                    view.chart.update('none');
+                });
                 updateCursorFromVideo();
             }
 
@@ -784,7 +930,7 @@
                 const layoutObserver = new ResizeObserver(() => refreshResponsiveLayout());
                 layoutObserver.observe(canvasWrapper);
                 layoutObserver.observe(dataPanel);
-                layoutObserver.observe(chartBox);
+                layoutObserver.observe(chartStack);
                 layoutObserver.observe(tableSection);
             }
             if (window.innerWidth < 820 && btnCSVMobile) btnCSVMobile.style.display = 'block';
@@ -976,66 +1122,24 @@
             function recompute() {
                 const points = getCurrentPoints();
                 if (points.length === 0) { renderTable([], [], [], [], [], [], []); updateMainChart(); return; }
-                const t = points.map(p => p.t);
-                const x = points.map(p => p.xm);
-                const y = points.map(p => p.ym);
-                const vx = diffCentral(t, x);
-                const vy = diffCentral(t, y);
-                const ax = diffCentral(t, vx);
-                const ay = diffCentral(t, vy);
-                renderTable(t, x, y, vx, vy, ax, ay);
+                const series = getChartSeries(points);
+                renderTable(series.t, series.x, series.y, series.vx, series.vy, series.ax, series.ay);
                 updateMainChart();
-            }
-
-            function updateMainChart(t, x, y, vx, vy, ax, ay) {
-                let data = [], ylabel = '';
-                switch (mode) {
-                    case 'xt': data = x; ylabel = 'x [m]'; break;
-                    case 'yt': data = y; ylabel = 'y [m]'; break;
-                    case 'vxt': data = vx; ylabel = 'vx [m/s]'; break;
-                    case 'vyt': data = vy; ylabel = 'vy [m/s]'; break;
-                    case 'axt': data = ax; ylabel = 'ax [m/s^2]'; break;
-                    case 'ayt': data = ay; ylabel = 'ay [m/s^2]'; break;
-                }
-                if (t && t.length > 0 && data && data.length > 0) {
-                    const scatterData = t.map((timeVal, i) => ({ x: timeVal, y: data[i] }));
-                    ch.data.datasets[0].data = scatterData;
-                } else {
-                    ch.data.datasets[0].data = [];
-                }
-                ch.data.labels = [];
-                const currentMeta = TRACKS.find(tk => tk.id === currentTrackId);
-                ch.data.datasets[0].label = (currentMeta?.label || '物体') + ' ' + mode.toUpperCase();
-                ch.options.scales.y.title.text = ylabel;
-
-                if (Array.isArray(data) && data.length) {
-                    let dmin = Infinity, dmax = -Infinity;
-                    for (const v of data) { if (Number.isFinite(v)) { dmin = Math.min(dmin, v); dmax = Math.max(dmax, v); } }
-                    if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin = -1; dmax = 1; }
-                    let lo = Math.min(0, dmin), hi = Math.max(0, dmax);
-                    if (Math.abs(hi - lo) < 1e-6) { const pad = (Math.abs(hi) || 1) * 0.5; lo -= pad; hi += pad; }
-                    else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
-                    ch.options.scales.y.min = lo; ch.options.scales.y.max = hi;
-                } else { ch.options.scales.y.min = -1; ch.options.scales.y.max = 1; }
-                ch.update();
-                modeButtons.forEach(b => {
-                    b.style.backgroundColor = (b.dataset.mode === mode) ? '#2563eb' : '#334155';
-                });
             }
 
             function getChartSeries(points) {
                 const t = points.map(p => p.t);
                 const x = points.map(p => p.xm);
                 const y = points.map(p => p.ym);
-                const vx = diffCentral(t, x);
-                const vy = diffCentral(t, y);
-                const ax = diffCentral(t, vx);
-                const ay = diffCentral(t, vy);
+                const vx = localRegressionDerivative(t, x, 1);
+                const vy = localRegressionDerivative(t, y, 1);
+                const ax = localRegressionDerivative(t, x, 2);
+                const ay = localRegressionDerivative(t, y, 2);
                 return { t, x, y, vx, vy, ax, ay };
             }
 
-            function getChartDataByMode(series) {
-                switch (mode) {
+            function getChartDataByMode(series, chartMode) {
+                switch (chartMode) {
                     case 'yt': return { data: series.y, ylabel: 'y [m]' };
                     case 'vxt': return { data: series.vx, ylabel: 'vₓ [m/s]' };
                     case 'vyt': return { data: series.vy, ylabel: 'vᵧ [m/s]' };
@@ -1046,8 +1150,8 @@
                 }
             }
 
-            function getYAxisLabelParts() {
-                switch (mode) {
+            function getYAxisLabelParts(chartMode) {
+                switch (chartMode) {
                     case 'yt': return { base: 'y', sub: '', unit: ' [m]' };
                     case 'vxt': return { base: 'v', sub: 'x', unit: ' [m/s]' };
                     case 'vyt': return { base: 'v', sub: 'y', unit: ' [m/s]' };
@@ -1078,51 +1182,59 @@
 
             function updateMainChart() {
                 updateChartLegend();
-                let ylabel = 'x [m]';
-                let dmin = Infinity, dmax = -Infinity;
-                ch.data.labels = [];
-                ch.data.datasets = [];
+                ensureChartViews();
 
-                TRACKS.forEach(trackMeta => {
-                    const points = getTrackById(trackMeta.id).points;
-                    if (!points.length || chartTrackVisible[trackMeta.id] === false) return;
-                    const series = getChartSeries(points);
-                    const selected = getChartDataByMode(series);
-                    ylabel = selected.ylabel;
-                    const color = getTrackChartColor(trackMeta.id);
-                    const scatterData = series.t.map((timeVal, i) => {
-                        const value = selected.data[i];
-                        if (Number.isFinite(value)) {
-                            dmin = Math.min(dmin, value);
-                            dmax = Math.max(dmax, value);
-                        }
-                        return { x: timeVal, y: value };
+                chartViews.forEach(view => {
+                    let ylabel = 'x [m]';
+                    let dmin = Infinity, dmax = -Infinity;
+                    view.chart.$motionMode = view.mode;
+                    view.chart.data.labels = [];
+                    view.chart.data.datasets = [];
+
+                    TRACKS.forEach(trackMeta => {
+                        const points = getTrackById(trackMeta.id).points;
+                        if (!points.length || chartTrackVisible[trackMeta.id] === false) return;
+                        const series = getChartSeries(points);
+                        const selected = getChartDataByMode(series, view.mode);
+                        ylabel = selected.ylabel;
+                        const color = getTrackChartColor(trackMeta.id);
+                        const scatterData = series.t.map((timeVal, i) => {
+                            const value = selected.data[i];
+                            if (Number.isFinite(value)) {
+                                dmin = Math.min(dmin, value);
+                                dmax = Math.max(dmax, value);
+                            }
+                            return { x: timeVal, y: value };
+                        });
+                        view.chart.data.datasets.push({
+                            label: `${getTrackDisplayName(trackMeta.id)} ${view.mode.toUpperCase()}`,
+                            data: scatterData,
+                            pointRadius: 2,
+                            tension: 0,
+                            borderColor: color,
+                            backgroundColor: color
+                        });
                     });
-                    ch.data.datasets.push({
-                        label: `${getTrackDisplayName(trackMeta.id)} ${mode.toUpperCase()}`,
-                        data: scatterData,
-                        pointRadius: 2,
-                        tension: 0,
-                        borderColor: color,
-                        backgroundColor: color
-                    });
+
+                    view.chart.options.scales.y.title.text = ylabel;
+                    if (view.chart.data.datasets.length) {
+                        if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin = -1; dmax = 1; }
+                        let lo = Math.min(0, dmin), hi = Math.max(0, dmax);
+                        if (Math.abs(hi - lo) < 1e-6) { const pad = (Math.abs(hi) || 1) * 0.5; lo -= pad; hi += pad; }
+                        else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
+                        view.chart.options.scales.y.min = lo; view.chart.options.scales.y.max = hi;
+                    } else {
+                        view.chart.options.scales.y.min = -1;
+                        view.chart.options.scales.y.max = 1;
+                    }
+                    view.chart.update();
                 });
 
-                ch.options.scales.y.title.text = ylabel;
-                if (ch.data.datasets.length) {
-                    if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin = -1; dmax = 1; }
-                    let lo = Math.min(0, dmin), hi = Math.max(0, dmax);
-                    if (Math.abs(hi - lo) < 1e-6) { const pad = (Math.abs(hi) || 1) * 0.5; lo -= pad; hi += pad; }
-                    else { const pad = (hi - lo) * 0.05; lo -= pad; hi += pad; }
-                    ch.options.scales.y.min = lo; ch.options.scales.y.max = hi;
-                } else {
-                    ch.options.scales.y.min = -1;
-                    ch.options.scales.y.max = 1;
-                }
-                ch.update();
                 modeButtons.forEach(b => {
-                    b.style.backgroundColor = (b.dataset.mode === mode) ? '#2563eb' : '#334155';
+                    b.classList.toggle('selected', selectedChartModes.includes(b.dataset.mode));
+                    b.style.backgroundColor = selectedChartModes.includes(b.dataset.mode) ? '#2563eb' : '#334155';
                 });
+                updateCursorFromVideo();
             }
 
             function diffCentral(t, y) {
@@ -1131,6 +1243,64 @@
                 if (n > 1) { dy[0] = (y[1] - y[0]) / (t[1] - t[0]); dy[n - 1] = (y[n - 1] - y[n - 2]) / (t[n - 1] - t[n - 2]); }
                 for (let i = 1; i < n - 1; i++) { const dt = t[i + 1] - t[i - 1]; if (Math.abs(dt) > 1e-9) dy[i] = (y[i + 1] - y[i - 1]) / dt; }
                 return dy;
+            }
+
+            function localRegressionDerivative(t, y, order) {
+                const n = t.length;
+                if (n < 3) return order === 1 ? diffCentral(t, y) : diffCentral(t, diffCentral(t, y));
+                const fallback = order === 1 ? diffCentral(t, y) : diffCentral(t, diffCentral(t, y));
+                const result = new Array(n).fill(NaN);
+                const half = Math.max(1, Math.round(regressionHalfWindow));
+                for (let i = 0; i < n; i++) {
+                    const start = Math.max(0, i - half);
+                    const end = Math.min(n - 1, i + half);
+                    if (end - start + 1 < 3) {
+                        result[i] = fallback[i];
+                        continue;
+                    }
+                    const fit = fitLocalQuadratic(t, y, i, start, end);
+                    result[i] = fit ? (order === 1 ? fit.b : 2 * fit.c) : fallback[i];
+                }
+                return result;
+            }
+
+            function fitLocalQuadratic(t, y, centerIndex, start, end) {
+                let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+                let z0 = 0, z1 = 0, z2 = 0;
+                const tc = t[centerIndex];
+                for (let j = start; j <= end; j++) {
+                    const x = t[j] - tc;
+                    const x2 = x * x;
+                    const val = y[j];
+                    if (!Number.isFinite(x) || !Number.isFinite(val)) continue;
+                    s0 += 1; s1 += x; s2 += x2; s3 += x2 * x; s4 += x2 * x2;
+                    z0 += val; z1 += val * x; z2 += val * x2;
+                }
+                if (s0 < 3) return null;
+                return solve3x3(
+                    [[s0, s1, s2], [s1, s2, s3], [s2, s3, s4]],
+                    [z0, z1, z2]
+                );
+            }
+
+            function solve3x3(a, b) {
+                const m = a.map((row, i) => [...row, b[i]]);
+                for (let col = 0; col < 3; col++) {
+                    let pivot = col;
+                    for (let row = col + 1; row < 3; row++) {
+                        if (Math.abs(m[row][col]) > Math.abs(m[pivot][col])) pivot = row;
+                    }
+                    if (Math.abs(m[pivot][col]) < 1e-12) return null;
+                    if (pivot !== col) [m[pivot], m[col]] = [m[col], m[pivot]];
+                    const div = m[col][col];
+                    for (let k = col; k < 4; k++) m[col][k] /= div;
+                    for (let row = 0; row < 3; row++) {
+                        if (row === col) continue;
+                        const factor = m[row][col];
+                        for (let k = col; k < 4; k++) m[row][k] -= factor * m[col][k];
+                    }
+                }
+                return { a: m[0][3], b: m[1][3], c: m[2][3] };
             }
 
             function detectFPSOnce() {
@@ -1243,36 +1413,72 @@
                 }
             };
 
+            const csvCell = value => {
+                if (value == null) return '';
+                const text = String(value);
+                return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+            };
+
             const downloadCSV = () => {
-                const points = getCurrentPoints();
-                if (!points.length) return alert('データがありません');
-                let csv = "t[s],x[m],y[m],vx[m/s],vy[m/s],ax[m/s^2],ay[m/s^2]\n";
-                const t = points.map(p => p.t);
-                const x = points.map(p => p.xm);
-                const y = points.map(p => p.ym);
-                const vx = diffCentral(t, x);
-                const vy = diffCentral(t, y);
-                const ax = diffCentral(t, vx);
-                const ay = diffCentral(t, vy);
-                for (let i = 0; i < points.length; i++) {
-                    csv += `${t[i]},${x[i]},${y[i]},${vx[i]},${vy[i]},${ax[i]},${ay[i]}\n`;
-                }
-                const blob = new Blob([csv], { type: 'text/csv' });
+                const tracksWithData = TRACKS
+                    .map(trackMeta => ({ trackMeta, points: getTrackById(trackMeta.id).points }))
+                    .filter(item => item.points.length);
+                if (!tracksWithData.length) return alert('データがありません');
+                let csv = "object,index,t[s],x[m],y[m],vx[m/s],vy[m/s],ax[m/s^2],ay[m/s^2]\n";
+                tracksWithData.forEach(({ trackMeta, points }) => {
+                    const { t, x, y, vx, vy, ax, ay } = getChartSeries(points);
+                    for (let i = 0; i < points.length; i++) {
+                        const row = [getTrackDisplayName(trackMeta.id), i, t[i], x[i], y[i], vx[i], vy[i], ax[i], ay[i]];
+                        csv += `${row.map(csvCell).join(',')}\n`;
+                    }
+                });
+                const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = `motion_data_${currentTrackId}.csv`; a.click();
+                a.href = url; a.download = tracksWithData.length > 1 ? 'motion_data_all.csv' : `motion_data_${tracksWithData[0].trackMeta.id}.csv`; a.click();
             };
             btnCSV.onclick = downloadCSV;
             if (btnCSVMobile) btnCSVMobile.onclick = downloadCSV;
 
             btnPNGCurrent.onclick = () => {
-                const url = ch.toBase64Image();
+                const firstChart = chartViews[0]?.chart;
+                if (!firstChart) return;
+                const url = firstChart.toBase64Image();
                 const a = document.createElement('a');
                 a.href = url; a.download = 'chart.png'; a.click();
             };
             modeButtons.forEach(btn => {
-                btn.onclick = () => { mode = btn.dataset.mode; recompute(); };
+                btn.onclick = () => {
+                    const nextMode = btn.dataset.mode;
+                    if (selectedChartModes.includes(nextMode)) {
+                        if (selectedChartModes.length > 1) {
+                            selectedChartModes = selectedChartModes.filter(item => item !== nextMode);
+                        }
+                    } else if (selectedChartModes.length < 3) {
+                        selectedChartModes = [...selectedChartModes, nextMode];
+                    } else {
+                        alert('同時に表示できるグラフは3つまでです');
+                    }
+                    resetChartHeightWeights();
+                    recompute();
+                };
             });
+            regHalfWindowInput.addEventListener('change', () => {
+                const value = Math.max(1, Math.round(Number(regHalfWindowInput.value) || 1));
+                regressionHalfWindow = value;
+                regHalfWindowInput.value = String(value);
+                recompute();
+            });
+            btnGraphOnly.onclick = () => {
+                scrollArea.classList.add('graph-only');
+                chartSection.classList.add('graph-only');
+                refreshResponsiveLayout();
+            };
+            btnGraphRestore.onclick = () => {
+                scrollArea.classList.remove('graph-only');
+                chartSection.classList.remove('graph-only');
+                refreshResponsiveLayout();
+            };
             chartTrackToggles.forEach(toggle => {
                 toggle.onchange = () => {
                     chartTrackVisible[toggle.value] = toggle.checked;
@@ -1320,7 +1526,11 @@
                 btnAxis.disabled = true; btnStartPlot.disabled = true;
                 kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—';
                 scaleInfo.textContent = '未校正'; originInfo.textContent = '原点:未設定';
-                ch.data.labels = []; ch.data.datasets = []; ch.update();
+                chartViews.forEach(view => {
+                    view.chart.data.labels = [];
+                    view.chart.data.datasets = [];
+                    view.chart.update();
+                });
                 recompute();
             }
 
@@ -1340,9 +1550,11 @@
                 kScale.textContent = '—';
                 scaleInfo.textContent = '未校正';
                 refreshCurrentTrackInfo();
-                ch.data.labels = [];
-                ch.data.datasets = [];
-                ch.update();
+                chartViews.forEach(view => {
+                    view.chart.data.labels = [];
+                    view.chart.data.datasets = [];
+                    view.chart.update();
+                });
                 recompute();
             }
 
@@ -1357,6 +1569,8 @@
             }
 
             let isDraggingGraph = false;
+            let activeGraphView = null;
+            let activeChartResize = null;
             let isResizingPanels = false;
             let isResizingTable = false;
             let resizeFrame = 0;
@@ -1474,29 +1688,83 @@
             video.addEventListener('timeupdate', () => { if (video.paused) updateCursorFromVideo(); });
             function updateCursorFromVideo() {
                 const points = getCurrentPoints();
-                if (isDraggingGraph || !points.length || !ch.scales.x) return;
-                const val = video.currentTime;
-                const x = ch.scales.x.getPixelForValue(val);
-                const chartArea = ch.chartArea;
-                if (chartArea && x >= chartArea.left && x <= chartArea.right) {
-                    cursor.style.display = 'block';
-                    cursor.style.left = `${x}px`;
-                    cursor.style.top = `${chartArea.top}px`;
-                    cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
-                } else {
-                    cursor.style.display = 'none';
+                if (isDraggingGraph) return;
+                if (!points.length) {
+                    chartViews.forEach(view => view.cursor.style.display = 'none');
+                    return;
                 }
+                updateCursorsForTime(video.currentTime);
             }
 
-            chartBox.addEventListener('pointerdown', (e) => {
-                const points = getCurrentPoints();
-                if (!points.length) return;
-                isDraggingGraph = true;
-                video.pause();
-                e.preventDefault();
-                if (chartBox.setPointerCapture) chartBox.setPointerCapture(e.pointerId);
-                syncVideoToGraphMouse(e);
-            });
+            function updateCursorsForTime(timeValue) {
+                chartViews.forEach(view => {
+                    if (!view.chart.scales.x) return;
+                    const x = view.chart.scales.x.getPixelForValue(timeValue);
+                    const chartArea = view.chart.chartArea;
+                    if (chartArea && x >= chartArea.left && x <= chartArea.right) {
+                        view.cursor.style.display = 'block';
+                        view.cursor.style.left = `${x}px`;
+                        view.cursor.style.top = `${chartArea.top}px`;
+                        view.cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
+                    } else {
+                        view.cursor.style.display = 'none';
+                    }
+                });
+            }
+
+            function bindChartPointer(view) {
+                view.box.addEventListener('pointerdown', (e) => {
+                    const points = getCurrentPoints();
+                    if (!points.length) return;
+                    activeGraphView = view;
+                    isDraggingGraph = true;
+                    video.pause();
+                    e.preventDefault();
+                    if (view.box.setPointerCapture) view.box.setPointerCapture(e.pointerId);
+                    syncVideoToGraphMouse(e, view);
+                });
+            }
+
+            function bindChartResize(splitterEl, index) {
+                splitterEl.addEventListener('pointerdown', (e) => {
+                    const upper = chartViews[index]?.box;
+                    const lower = chartViews[index + 1]?.box;
+                    if (!upper || !lower) return;
+                    activeChartResize = {
+                        index,
+                        splitter: splitterEl,
+                        startY: e.clientY,
+                        upperHeight: upper.getBoundingClientRect().height,
+                        lowerHeight: lower.getBoundingClientRect().height,
+                        totalWeight: (chartHeightWeights[index] || 1) + (chartHeightWeights[index + 1] || 1)
+                    };
+                    splitterEl.classList.add('dragging');
+                    document.body.style.cursor = 'row-resize';
+                    e.preventDefault();
+                    if (splitterEl.setPointerCapture) splitterEl.setPointerCapture(e.pointerId);
+                }, { passive: false });
+
+                splitterEl.addEventListener('pointercancel', () => {
+                    activeChartResize = null;
+                    splitterEl.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    refreshResponsiveLayout();
+                });
+            }
+
+            function resizeChartPair(clientY) {
+                if (!activeChartResize) return;
+                const minHeight = 80;
+                const pairHeight = activeChartResize.upperHeight + activeChartResize.lowerHeight;
+                if (pairHeight < minHeight * 2) return;
+                const nextUpper = Math.max(minHeight, Math.min(pairHeight - minHeight, activeChartResize.upperHeight + clientY - activeChartResize.startY));
+                const upperShare = nextUpper / pairHeight;
+                const lowerShare = 1 - upperShare;
+                const index = activeChartResize.index;
+                chartHeightWeights[index] = activeChartResize.totalWeight * upperShare;
+                chartHeightWeights[index + 1] = activeChartResize.totalWeight * lowerShare;
+                applyChartHeightWeights();
+            }
 
             window.addEventListener('pointermove', (e) => {
                 if (isResizingPanels) {
@@ -1511,9 +1779,14 @@
                     e.preventDefault();
                     return;
                 }
+                if (activeChartResize) {
+                    resizeChartPair(e.clientY);
+                    e.preventDefault();
+                    return;
+                }
                 if (isDraggingGraph) {
                     e.preventDefault();
-                    syncVideoToGraphMouse(e);
+                    syncVideoToGraphMouse(e, activeGraphView);
                 }
             });
 
@@ -1538,28 +1811,37 @@
                     refreshResponsiveLayout();
                     return;
                 }
+                if (activeChartResize) {
+                    const active = activeChartResize;
+                    activeChartResize = null;
+                    active.splitter.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    if (active.splitter.releasePointerCapture && e?.pointerId != null) {
+                        try { active.splitter.releasePointerCapture(e.pointerId); } catch (_) { }
+                    }
+                    refreshResponsiveLayout();
+                    return;
+                }
                 if (isDraggingGraph) {
                     isDraggingGraph = false;
-                    if (chartBox.releasePointerCapture && e?.pointerId != null) {
-                        try { chartBox.releasePointerCapture(e.pointerId); } catch (_) { }
+                    if (activeGraphView?.box?.releasePointerCapture && e?.pointerId != null) {
+                        try { activeGraphView.box.releasePointerCapture(e.pointerId); } catch (_) { }
                     }
+                    activeGraphView = null;
                     updateCursorFromVideo();
                 }
             });
 
-            function syncVideoToGraphMouse(e) {
-                if (!ch.scales.x) return;
-                const rect = chartBox.getBoundingClientRect();
+            function syncVideoToGraphMouse(e, view) {
+                if (!view?.chart?.scales?.x) return;
+                const rect = view.box.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
-                let targetTime = ch.scales.x.getValueForPixel(mouseX);
+                let targetTime = view.chart.scales.x.getValueForPixel(mouseX);
                 targetTime = Math.max(0, Math.min(targetTime, video.duration || 0));
 
-                const chartArea = ch.chartArea;
+                const chartArea = view.chart.chartArea;
                 if (chartArea && mouseX >= chartArea.left && mouseX <= chartArea.right) {
-                    cursor.style.display = 'block';
-                    cursor.style.left = `${mouseX}px`;
-                    cursor.style.top = `${chartArea.top}px`;
-                    cursor.style.height = `${chartArea.bottom - chartArea.top}px`;
+                    updateCursorsForTime(targetTime);
                 }
                 if (Number.isFinite(targetTime)) {
                     video.currentTime = targetTime;
@@ -1580,6 +1862,9 @@
             });
             video.addEventListener('play', () => { playing = true; btnPlay.textContent = '停止'; renderLoop(); });
             video.addEventListener('pause', () => { playing = false; btnPlay.textContent = '再生'; drawFrame(); updateCursorFromVideo(); });
+
+            ensureChartViews();
+            updateMainChart();
 
         })();
     </script>
