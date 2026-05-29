@@ -97,8 +97,8 @@
 
         canvas {
             display: block;
-            max-width: 100%;
-            max-height: 100%;
+            max-width: none;
+            max-height: none;
             object-fit: contain;
             touch-action: none;
         }
@@ -110,12 +110,42 @@
             cursor: col-resize;
             touch-action: none;
             user-select: none;
+            position: relative;
             z-index: 20;
         }
 
         .splitter:hover,
         .splitter.dragging {
             background: linear-gradient(90deg, transparent 0, transparent 3px, var(--primary) 3px, var(--primary) 7px, transparent 7px);
+        }
+
+        .splitter-handle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 44px;
+            height: 72px;
+            border: 1px solid rgba(148, 163, 184, 0.65);
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.92);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .splitter-handle::before {
+            content: "";
+            width: 12px;
+            height: 34px;
+            border-left: 2px solid var(--text-muted);
+            border-right: 2px solid var(--text-muted);
+        }
+
+        .splitter:hover .splitter-handle,
+        .splitter.dragging .splitter-handle {
+            border-color: var(--primary);
         }
 
         /* Video Toolbar */
@@ -594,7 +624,9 @@
             </div>
         </div>
 
-        <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="表示領域の幅を調整"></div>
+        <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="表示領域の幅を調整">
+            <div class="splitter-handle" aria-hidden="true"></div>
+        </div>
 
         <div class="data-panel">
             <div class="scroll-area">
@@ -749,6 +781,20 @@
             let axis = { ox: 0, oy: 0, theta: 0 };
             const AXIS_HANDLE_R = 12;
             const AXIS_HANDLE_LEN = 80;
+            const RECORD_IDLE = 'idle';
+            const RECORDING = 'recording';
+            const RECORD_FINISHED = 'finished';
+            let recordState = RECORD_IDLE;
+            const ZOOM_MIN = 1;
+            const ZOOM_MAX = 6;
+            const TAP_MOVE_LIMIT = 10;
+            const TAP_TIME_LIMIT = 600;
+            let zoomScale = 1;
+            let panOffset = { x: 0, y: 0 };
+            let baseCanvasSize = { width: 0, height: 0 };
+            const activeCanvasPointers = new Map();
+            let pinchGesture = null;
+            let tapCandidate = null;
 
             // Chart
             const chartBgPlugin = {
@@ -891,8 +937,64 @@
                 if (!rect.width || !rect.height || !vw || !vh) return;
 
                 const fit = Math.min(rect.width / vw, rect.height / vh);
-                canvas.style.width = `${Math.max(1, Math.floor(vw * fit))}px`;
-                canvas.style.height = `${Math.max(1, Math.floor(vh * fit))}px`;
+                baseCanvasSize = {
+                    width: Math.max(1, Math.floor(vw * fit)),
+                    height: Math.max(1, Math.floor(vh * fit))
+                };
+                applyCanvasView();
+            }
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function clampPanOffset() {
+                const rect = canvasWrapper.getBoundingClientRect();
+                const displayWidth = baseCanvasSize.width * zoomScale;
+                const displayHeight = baseCanvasSize.height * zoomScale;
+                const maxX = Math.max(0, (displayWidth - rect.width) / 2);
+                const maxY = Math.max(0, (displayHeight - rect.height) / 2);
+                panOffset.x = clamp(panOffset.x, -maxX, maxX);
+                panOffset.y = clamp(panOffset.y, -maxY, maxY);
+            }
+
+            function applyCanvasView() {
+                clampPanOffset();
+                canvas.style.width = `${baseCanvasSize.width * zoomScale}px`;
+                canvas.style.height = `${baseCanvasSize.height * zoomScale}px`;
+                canvas.style.transform = `translate(${panOffset.x}px, ${panOffset.y}px)`;
+            }
+
+            function resetCanvasView() {
+                zoomScale = 1;
+                panOffset = { x: 0, y: 0 };
+                applyCanvasView();
+            }
+
+            function getClientDistance(a, b) {
+                return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+            }
+
+            function getClientCenter(a, b) {
+                return {
+                    x: (a.clientX + b.clientX) / 2,
+                    y: (a.clientY + b.clientY) / 2
+                };
+            }
+
+            function updateRecordButton() {
+                if (recordState === RECORDING) {
+                    btnStartPlot.textContent = '記録完了';
+                    btnStartPlot.disabled = false;
+                    return;
+                }
+                if (recordState === RECORD_FINISHED) {
+                    btnStartPlot.textContent = '記録完了';
+                    btnStartPlot.disabled = true;
+                    return;
+                }
+                btnStartPlot.textContent = '記録開始';
+                btnStartPlot.disabled = !(scalePxPerMeter != null && axisMode);
             }
 
             function refreshResponsiveLayout() {
@@ -1023,7 +1125,55 @@
             let dragMode = null;
             function hitCircle(px, py, cx, cy, r) { return Math.hypot(px - cx, py - cy) <= r; }
 
+            function startPinchGesture() {
+                if (activeCanvasPointers.size < 2) return;
+                const points = Array.from(activeCanvasPointers.values()).slice(0, 2);
+                pinchGesture = {
+                    startDistance: Math.max(1, getClientDistance(points[0], points[1])),
+                    startCenter: getClientCenter(points[0], points[1]),
+                    startZoom: zoomScale,
+                    startPan: { ...panOffset }
+                };
+                tapCandidate = null;
+                dragMode = null;
+                if (calibDragging) {
+                    calibDragging = false;
+                    calibStart = calibEnd = null;
+                }
+            }
+
+            function updatePinchGesture() {
+                if (!pinchGesture || activeCanvasPointers.size < 2) return;
+                const points = Array.from(activeCanvasPointers.values()).slice(0, 2);
+                const distance = Math.max(1, getClientDistance(points[0], points[1]));
+                const center = getClientCenter(points[0], points[1]);
+                zoomScale = clamp(pinchGesture.startZoom * (distance / pinchGesture.startDistance), ZOOM_MIN, ZOOM_MAX);
+                const rect = canvasWrapper.getBoundingClientRect();
+                const wrapperCenter = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2
+                };
+                const zoomRatio = zoomScale / pinchGesture.startZoom;
+                panOffset = {
+                    x: center.x - wrapperCenter.x - ((pinchGesture.startCenter.x - wrapperCenter.x - pinchGesture.startPan.x) * zoomRatio),
+                    y: center.y - wrapperCenter.y - ((pinchGesture.startCenter.y - wrapperCenter.y - pinchGesture.startPan.y) * zoomRatio)
+                };
+                applyCanvasView();
+            }
+
             canvas.addEventListener('pointermove', e => {
+                if (activeCanvasPointers.has(e.pointerId)) {
+                    activeCanvasPointers.set(e.pointerId, e);
+                }
+                if (pinchGesture) {
+                    e.preventDefault();
+                    updatePinchGesture();
+                    return;
+                }
+                if (tapCandidate?.pointerId === e.pointerId) {
+                    const moved = Math.hypot(e.clientX - tapCandidate.startX, e.clientY - tapCandidate.startY);
+                    if (moved > TAP_MOVE_LIMIT) tapCandidate.moved = true;
+                }
                 mousePos = getXY(e);
                 if (calibMode && calibDragging) { calibEnd = getXY(e); }
                 if (axisMode && dragMode) {
@@ -1033,10 +1183,17 @@
                 drawFrame();
             }, { passive: false });
 
-            canvas.addEventListener('pointerdown', async e => {
+            canvas.addEventListener('pointerdown', e => {
                 e.preventDefault();
+                activeCanvasPointers.set(e.pointerId, e);
                 if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+                if (activeCanvasPointers.size >= 2) {
+                    startPinchGesture();
+                    return;
+                }
+                if (pinchGesture) return;
                 const p = getXY(e);
+                mousePos = p;
 
                 if (axisMode) {
                     const ex = { x: Math.cos(axis.theta), y: Math.sin(axis.theta) };
@@ -1054,24 +1211,60 @@
                     drawFrame(); return;
                 }
 
-                if (btnStartPlot.disabled && !axisActive) {
-                    if (scalePxPerMeter == null) alert('手順:「距離校正」を行ってください。');
-                    else alert('手順:「軸設定」で原点を調整してから記録してください。');
-                    return;
-                }
-
-                recordPoint(p.x, p.y, video.currentTime);
-                if (autoStep.checked) await stepFrame(+1);
+                tapCandidate = {
+                    pointerId: e.pointerId,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startTime: performance.now(),
+                    moved: false
+                };
             }, { passive: false });
 
-            canvas.addEventListener('pointerup', e => {
+            canvas.addEventListener('pointerup', async e => {
+                const wasPinching = !!pinchGesture || activeCanvasPointers.size > 1;
+                activeCanvasPointers.delete(e.pointerId);
                 if (canvas.releasePointerCapture) {
                     try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
+                }
+                if (wasPinching) {
+                    if (activeCanvasPointers.size < 2) pinchGesture = null;
+                    tapCandidate = null;
+                    e.preventDefault();
+                    return;
                 }
                 if (calibMode && calibDragging && calibStart) {
                     calibEnd = getXY(e);
                     finalizeCalibration(calibStart, calibEnd);
+                    e.preventDefault();
+                    return;
                 }
+                if (dragMode) {
+                    dragMode = null;
+                    e.preventDefault();
+                    return;
+                }
+                if (tapCandidate?.pointerId === e.pointerId) {
+                    const elapsed = performance.now() - tapCandidate.startTime;
+                    const p = getXY(e);
+                    const canRecord = recordState === RECORDING && !axisMode && !calibMode && scalePxPerMeter != null;
+                    const isTap = !tapCandidate.moved && elapsed <= TAP_TIME_LIMIT;
+                    tapCandidate = null;
+                    if (canRecord && isTap) {
+                        recordPoint(p.x, p.y, video.currentTime);
+                        if (autoStep.checked) await stepFrame(+1);
+                    } else if (recordState === RECORD_IDLE && isTap) {
+                        if (scalePxPerMeter == null) alert('手順:「距離校正」を行ってください。');
+                        else if (!axisActive) alert('手順:「軸設定」で原点を調整してから記録してください。');
+                    }
+                }
+                dragMode = null;
+            }, { passive: false });
+
+            canvas.addEventListener('pointercancel', e => {
+                activeCanvasPointers.delete(e.pointerId);
+                pinchGesture = activeCanvasPointers.size >= 2 ? pinchGesture : null;
+                tapCandidate = null;
+                calibDragging = false;
                 dragMode = null;
             }, { passive: false });
 
@@ -1088,6 +1281,8 @@
                 }
                 calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                 btnCalib.disabled = false;
+                recordState = RECORD_IDLE;
+                updateRecordButton();
                 drawFrame();
             }
 
@@ -1101,6 +1296,7 @@
             }
 
             function recordPoint(xpx, ypx, t) {
+                if (recordState !== RECORDING) return;
                 if (scalePxPerMeter == null) { alert('先に「距離校正」を行ってください。'); return; }
                 if (axisActive !== true) { axis.theta = axis.theta || 0; }
                 const loc = pxToAxisMeters(xpx, ypx);
@@ -1304,70 +1500,113 @@
             }
 
             function detectFPSOnce() {
-                if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-                    let frameCount = 0;
-                    let t0 = 0;
+                if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+                const mediaTimes = [];
+                let samples = 0;
+                const maxSamples = 8;
 
-                    const cb = (_, info) => {
-                        if (frameCount === 0) {
-                            t0 = info.mediaTime;
-                            frameCount++;
-                            video.requestVideoFrameCallback(cb);
-                        } else if (frameCount === 1) {
-                            const t1 = info.mediaTime;
-                            const diff = t1 - t0;
-                            if (diff > 0.001) {
-                                const fps = 1 / diff;
-                                if (fps > 5 && fps < 240) {
-                                    fpsInput.value = fps.toFixed(2);
-                                    kFPS.textContent = fps.toFixed(2);
-                                }
-                            }
-                        }
-                    };
-                    video.requestVideoFrameCallback(cb);
-                }
+                const cb = (_, info) => {
+                    if (Number.isFinite(info.mediaTime)) {
+                        mediaTimes.push(info.mediaTime);
+                    }
+                    samples++;
+                    if (samples < maxSamples) {
+                        video.requestVideoFrameCallback(cb);
+                        return;
+                    }
+                    const diffs = [];
+                    for (let i = 1; i < mediaTimes.length; i++) {
+                        const diff = mediaTimes[i] - mediaTimes[i - 1];
+                        if (diff > 0.001 && diff < 0.2) diffs.push(diff);
+                    }
+                    if (!diffs.length) return;
+                    diffs.sort((a, b) => a - b);
+                    const mid = Math.floor(diffs.length / 2);
+                    const median = diffs.length % 2 ? diffs[mid] : (diffs[mid - 1] + diffs[mid]) / 2;
+                    const fps = 1 / median;
+                    if (fps > 5 && fps < 240) {
+                        fpsInput.value = fps.toFixed(2);
+                        kFPS.textContent = fps.toFixed(2);
+                    }
+                };
+                video.requestVideoFrameCallback(cb);
             }
 
             // Frame stepping
+            let seekToken = 0;
+            function getFrameDuration() {
+                const fps = parseFloat(fpsInput.value);
+                const safeFps = Number.isFinite(fps) && fps > 5 && fps < 240 ? fps : 30;
+                return 1 / safeFps;
+            }
+
             async function stepFrame(dir) {
                 video.pause();
                 playing = false;
                 btnPlay.textContent = '再生';
 
-                const fps = parseFloat(fpsInput.value) || 30;
-                const frameDur = 1.0 / fps;
+                const duration = Number.isFinite(video.duration) ? video.duration : 0;
+                if (!duration) return;
 
-                // Current frame index
-                let currentFrameIndex = Math.round(video.currentTime * fps);
+                const frameDur = getFrameDuration();
+                const startTime = video.currentTime || 0;
+                const endCap = Math.max(0, duration - 0.001);
+                const minProgress = Math.max(0.001, frameDur * 0.25);
+                const retryOffsets = dir > 0 ? [1, 1.25, 1.5, 2, 2.5] : [1, 1.25, 1.5, 2];
+                let lastObserved = startTime;
 
-                // Next frame index
-                let nextFrameIndex = currentFrameIndex + dir;
+                for (const offset of retryOffsets) {
+                    const targetTime = Math.max(0, Math.min(endCap, startTime + dir * frameDur * offset));
+                    if (Math.abs(targetTime - video.currentTime) < 0.0001) continue;
+                    lastObserved = await seekTo(targetTime);
+                    const movedForward = dir > 0 && lastObserved > startTime + minProgress;
+                    const movedBackward = dir < 0 && lastObserved < startTime - minProgress;
+                    if (movedForward || movedBackward || targetTime === 0 || targetTime === endCap) return;
+                }
 
-                // Target seek time (slightly inside frame)
-                // Seek slightly inside the target frame to avoid edge ambiguity
-                // This improves consistency on some browser decoders
-                let targetTime = (nextFrameIndex * frameDur) + (frameDur * 0.05);
-
-                // Clamp to valid time range
-                targetTime = Math.max(0, Math.min(targetTime, video.duration - 0.001));
-
-                // No-op if time is unchanged
-                if (Math.abs(targetTime - video.currentTime) < 0.0001) return;
-
-                return seekTo(targetTime);
+                drawFrame();
+                return lastObserved;
             }
 
             function seekTo(t) {
+                const token = ++seekToken;
                 return new Promise(res => {
-                    const onSeeked = () => {
+                    let settled = false;
+                    let frameCallbackId = null;
+                    const finish = () => {
+                        if (settled) return;
+                        if (token !== seekToken) {
+                            settled = true;
+                            clearTimeout(timer);
+                            video.removeEventListener('seeked', onSeeked);
+                            res(video.currentTime);
+                            return;
+                        }
+                        settled = true;
                         clearTimeout(timer);
+                        video.removeEventListener('seeked', onSeeked);
                         drawFrame();
-                        requestAnimationFrame(() => { drawFrame(); res(); });
+                        requestAnimationFrame(() => { drawFrame(); res(video.currentTime); });
                     };
-                    video.addEventListener('seeked', onSeeked, { once: true });
-                    const timer = setTimeout(() => { drawFrame(); res(); }, 300);
-                    video.currentTime = t;
+                    const onSeeked = () => {
+                        if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                            frameCallbackId = video.requestVideoFrameCallback(() => finish());
+                        } else {
+                            finish();
+                        }
+                    };
+                    video.addEventListener('seeked', onSeeked);
+                    const timer = setTimeout(() => {
+                        if (frameCallbackId && video.cancelVideoFrameCallback) {
+                            try { video.cancelVideoFrameCallback(frameCallbackId); } catch (_) { }
+                        }
+                        finish();
+                    }, 450);
+                    try {
+                        video.currentTime = t;
+                    } catch (_) {
+                        finish();
+                    }
                 });
             }
 
@@ -1376,17 +1615,30 @@
             btnPlay.onclick = () => { if (!playing) { video.play(); } else { video.pause(); } };
 
             btnCalib.onclick = () => {
+                recordState = RECORD_IDLE;
                 calibMode = true; calibDragging = false; calibStart = calibEnd = null;
+                axisActive = false; axisMode = false;
                 btnCalib.disabled = true; scaleInfo.textContent = 'ドラッグして基準長さを指定';
+                updateRecordButton();
             };
             btnAxis.onclick = () => {
                 axisMode = true; axisActive = false;
-                btnStartPlot.disabled = false;
+                recordState = RECORD_IDLE;
+                updateRecordButton();
                 drawFrame();
             };
             btnStartPlot.onclick = () => {
-                axisMode = false; axisActive = true;
-                btnStartPlot.disabled = true;
+                if (recordState === RECORDING) {
+                    recordState = RECORD_FINISHED;
+                    updateRecordButton();
+                    drawFrame();
+                    return;
+                }
+                if (recordState === RECORD_IDLE) {
+                    axisMode = false; axisActive = true;
+                    recordState = RECORDING;
+                    updateRecordButton();
+                }
                 drawFrame();
             };
             btnUndo.onclick = async () => {
@@ -1403,10 +1655,16 @@
                 if (confirm('記録データを消去しますか？')) {
                     tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
                     chartTrackVisible = { obj1: true, obj2: true };
+                    scalePxPerMeter = null;
                     calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                     axisActive = false; axisMode = false;
+                    recordState = RECORD_IDLE;
+                    activeCanvasPointers.clear();
+                    pinchGesture = null;
+                    tapCandidate = null;
+                    resetCanvasView();
                     btnAxis.disabled = true;
-                    btnStartPlot.disabled = true;
+                    updateRecordButton();
                     kPoints.textContent = '0'; kTime.textContent = '0.000'; originInfo.textContent = '原点:未設定';
                     scaleInfo.textContent = '未校正'; kScale.textContent = '—';
                     drawFrame(); recompute(); refreshCurrentTrackInfo();
@@ -1523,7 +1781,12 @@
                 if (trackSelect) trackSelect.value = currentTrackId;
                 scalePxPerMeter = null; calibMode = false; calibDragging = false;
                 axisActive = false; axisMode = false; axis.theta = 0;
-                btnAxis.disabled = true; btnStartPlot.disabled = true;
+                recordState = RECORD_IDLE;
+                activeCanvasPointers.clear();
+                pinchGesture = null;
+                tapCandidate = null;
+                resetCanvasView();
+                btnAxis.disabled = true; updateRecordButton();
                 kPoints.textContent = '0'; kTime.textContent = '0.000'; kScale.textContent = '—';
                 scaleInfo.textContent = '未校正'; originInfo.textContent = '原点:未設定';
                 chartViews.forEach(view => {
@@ -1545,8 +1808,13 @@
                 axisActive = false;
                 axisMode = false;
                 axis.theta = 0;
+                recordState = RECORD_IDLE;
+                activeCanvasPointers.clear();
+                pinchGesture = null;
+                tapCandidate = null;
+                resetCanvasView();
                 btnAxis.disabled = true;
-                btnStartPlot.disabled = true;
+                updateRecordButton();
                 kScale.textContent = '—';
                 scaleInfo.textContent = '未校正';
                 refreshCurrentTrackInfo();
