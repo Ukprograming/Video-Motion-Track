@@ -206,6 +206,76 @@
             line-height: 1;
         }
 
+        .panel-topbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 0 0 auto;
+        }
+
+        .switch-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--text-main);
+            font-size: 11px;
+            line-height: 1.2;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .switch-control input {
+            position: absolute;
+            inline-size: 1px;
+            block-size: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .switch-track {
+            position: relative;
+            width: 32px;
+            height: 18px;
+            flex: 0 0 32px;
+            border: 1px solid #64748b;
+            border-radius: 999px;
+            background: #334155;
+            transition: background-color .15s ease, border-color .15s ease;
+        }
+
+        .switch-track::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            transition: transform .15s ease;
+        }
+
+        .switch-control input:checked + .switch-track {
+            background: var(--primary);
+            border-color: #60a5fa;
+        }
+
+        .switch-control input:checked + .switch-track::after {
+            transform: translateX(14px);
+            background: #fff;
+        }
+
+        .switch-control input:focus-visible + .switch-track {
+            outline: 2px solid #93c5fd;
+            outline-offset: 2px;
+        }
+
+        .switch-control:has(input:disabled) {
+            opacity: .45;
+            cursor: not-allowed;
+        }
+
         .kpi-grid {
             display: none;
             grid-template-columns: repeat(2, 1fr);
@@ -221,9 +291,21 @@
             grid-column: 1 / -1;
         }
 
-        .kpi-card input {
+        .kpi-card input[type="number"] {
             width: 100%;
             margin-top: 4px;
+        }
+
+        .kpi-card.toggle-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 7px;
+        }
+
+        .axis-flip.reversed {
+            background: #a16207;
+            border-color: #facc15;
         }
 
         .kpi-card {
@@ -606,6 +688,8 @@
                     <span style="font-size:11px; color:#aaa;">基準[m]</span>
                     <input id="calibLength" type="number" step="0.01" min="0.001" value="1" style="width:72px;">
                     <button id="btnAxis" class="accent" disabled>軸設定</button>
+                    <button id="btnFlipX" class="axis-flip" disabled style="font-size:11px;">x正方向を反転</button>
+                    <button id="btnFlipY" class="axis-flip" disabled style="font-size:11px;">y正方向を反転</button>
                     <button id="btnStartPlot" class="primary" disabled>記録開始</button>
                 </div>
 
@@ -630,7 +714,14 @@
 
         <div class="data-panel">
             <div class="scroll-area">
-                <button id="btnKpiToggle" class="kpi-toggle" aria-expanded="false">情報を表示</button>
+                <div class="panel-topbar">
+                    <button id="btnKpiToggle" class="kpi-toggle" aria-expanded="false">情報を表示</button>
+                    <label class="switch-control" title="記録完了後に動画上の座標軸を再表示します">
+                        <input id="axisOverlayToggle" type="checkbox" disabled>
+                        <span class="switch-track" aria-hidden="true"></span>
+                        <span>軸を表示</span>
+                    </label>
+                </div>
                 <div id="kpiGrid" class="kpi-grid" aria-hidden="true">
                     <div class="kpi-card">
                         <div class="kpi-label">記録点数</div>
@@ -648,9 +739,17 @@
                         <div class="kpi-label">FPS (読取)</div>
                         <div id="kFPS" class="kpi-val">30.00</div>
                     </div>
-                    <div class="kpi-card wide">
+                    <div class="kpi-card">
                         <label class="kpi-label" for="regHalfWindow">局所回帰 半窓数</label>
                         <input id="regHalfWindow" type="number" min="1" step="1" value="1">
+                    </div>
+                    <div class="kpi-card toggle-card">
+                        <div class="kpi-label">グラフの横軸</div>
+                        <label class="switch-control">
+                            <input id="graphVideoTimeToggle" type="checkbox">
+                            <span class="switch-track" aria-hidden="true"></span>
+                            <span>動画時刻を使用</span>
+                        </label>
                     </div>
                 </div>
 
@@ -754,14 +853,18 @@
             const btnGraphOnly = document.getElementById('btnGraphOnly');
             const btnGraphRestore = document.getElementById('btnGraphRestore');
             const regHalfWindowInput = document.getElementById('regHalfWindow');
+            const graphVideoTimeToggle = document.getElementById('graphVideoTimeToggle');
+            const axisOverlayToggle = document.getElementById('axisOverlayToggle');
             const btnAxis = document.getElementById('btnAxis');
+            const btnFlipX = document.getElementById('btnFlipX');
+            const btnFlipY = document.getElementById('btnFlipY');
             const btnStartPlot = document.getElementById('btnStartPlot');
             const trackSelect = document.getElementById('trackSelect');
             const modeButtons = document.querySelectorAll('.modeBtn');
 
             // State
             const TRACKS = [
-                { id: 'obj1', label: '物体1', lineColor: '#38bdf8', pointColor: '#10b981' },
+                { id: 'obj1', label: '物体1', lineColor: '#00d9ff', pointColor: '#00d9ff' },
                 { id: 'obj2', label: '物体2', lineColor: '#fb923c', pointColor: '#f97316' }
             ];
             let tracks = Object.fromEntries(TRACKS.map(t => [t.id, { points: [], origin: null }]));
@@ -773,14 +876,19 @@
             let selectedChartModes = ['xt'];
             let chartHeightWeights = [1];
             let regressionHalfWindow = 1;
+            let useVideoTimeForGraph = false;
+            let showAxisAfterFinish = false;
 
             // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
             let axisMode = false;
             let axisActive = false;
-            let axis = { ox: 0, oy: 0, theta: 0 };
+            let axis = { ox: 0, oy: 0, theta: 0, xSign: 1, ySign: 1 };
             const AXIS_HANDLE_R = 12;
             const AXIS_HANDLE_LEN = 80;
+            const AXIS_DISPLAY_LINE_WIDTH = 4;
+            const AXIS_ARROW_LENGTH = 18;
+            const AXIS_ARROW_WIDTH = 15;
             const RECORD_IDLE = 'idle';
             const RECORDING = 'recording';
             const RECORD_FINISHED = 'finished';
@@ -983,6 +1091,15 @@
             }
 
             function updateRecordButton() {
+                const canAdjustAxis = axisMode && recordState === RECORD_IDLE && scalePxPerMeter != null;
+                btnFlipX.disabled = !canAdjustAxis;
+                btnFlipY.disabled = !canAdjustAxis;
+                updateAxisDirectionButtons();
+                axisOverlayToggle.disabled = recordState !== RECORD_FINISHED;
+                if (recordState !== RECORD_FINISHED) {
+                    showAxisAfterFinish = false;
+                    axisOverlayToggle.checked = false;
+                }
                 if (recordState === RECORDING) {
                     btnStartPlot.textContent = '記録完了';
                     btnStartPlot.disabled = false;
@@ -1049,22 +1166,99 @@
                 ctx.restore();
             }
 
+            function getAxisUnitVectors() {
+                const c = Math.cos(axis.theta);
+                const s = Math.sin(axis.theta);
+                return {
+                    ex: { x: c * axis.xSign, y: s * axis.xSign },
+                    ey: { x: s * axis.ySign, y: -c * axis.ySign }
+                };
+            }
+
+            function getCanvasUnitsPerCssPixel() {
+                const rect = canvas.getBoundingClientRect();
+                return rect.width > 0 ? canvas.width / rect.width : 1;
+            }
+
+            function getAxisLineWidth() {
+                return Math.max(4, AXIS_DISPLAY_LINE_WIDTH * getCanvasUnitsPerCssPixel());
+            }
+
+            function getPositiveAxisEnd(dir, margin) {
+                const candidates = [];
+                if (dir.x > 1e-9) candidates.push((canvas.width - margin - axis.ox) / dir.x);
+                if (dir.x < -1e-9) candidates.push((margin - axis.ox) / dir.x);
+                if (dir.y > 1e-9) candidates.push((canvas.height - margin - axis.oy) / dir.y);
+                if (dir.y < -1e-9) candidates.push((margin - axis.oy) / dir.y);
+                const validDistances = candidates.filter(value => value >= 0);
+                const distance = validDistances.length ? Math.min(...validDistances) : 0;
+                return {
+                    x: axis.ox + dir.x * distance,
+                    y: axis.oy + dir.y * distance
+                };
+            }
+
+            function drawPositiveAxisArrow(dir, color, label) {
+                const unitScale = getCanvasUnitsPerCssPixel();
+                const arrowLength = AXIS_ARROW_LENGTH * unitScale;
+                const halfWidth = AXIS_ARROW_WIDTH * unitScale / 2;
+                const end = getPositiveAxisEnd(dir, 5 * unitScale);
+                const base = {
+                    x: end.x - dir.x * arrowLength,
+                    y: end.y - dir.y * arrowLength
+                };
+                const perpendicular = { x: -dir.y, y: dir.x };
+
+                ctx.save();
+                ctx.fillStyle = color;
+                ctx.strokeStyle = 'rgba(15, 23, 42, .85)';
+                ctx.lineWidth = Math.max(1, 1.5 * unitScale);
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(end.x, end.y);
+                ctx.lineTo(base.x + perpendicular.x * halfWidth, base.y + perpendicular.y * halfWidth);
+                ctx.lineTo(base.x - perpendicular.x * halfWidth, base.y - perpendicular.y * halfWidth);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.font = `bold ${18 * unitScale}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.lineWidth = Math.max(2, 3 * unitScale);
+                const labelPoint = {
+                    x: end.x - dir.x * (arrowLength + 13 * unitScale) + perpendicular.x * 9 * unitScale,
+                    y: end.y - dir.y * (arrowLength + 13 * unitScale) + perpendicular.y * 9 * unitScale
+                };
+                ctx.strokeText(label, labelPoint.x, labelPoint.y);
+                ctx.fillText(label, labelPoint.x, labelPoint.y);
+                ctx.restore();
+            }
+
+            function updateAxisDirectionButtons() {
+                const xReversed = axis.xSign < 0;
+                const yReversed = axis.ySign < 0;
+                btnFlipX.classList.toggle('reversed', xReversed);
+                btnFlipY.classList.toggle('reversed', yReversed);
+                btnFlipX.setAttribute('aria-pressed', xReversed ? 'true' : 'false');
+                btnFlipY.setAttribute('aria-pressed', yReversed ? 'true' : 'false');
+                btnFlipX.textContent = xReversed ? 'x正方向を戻す' : 'x正方向を反転';
+                btnFlipY.textContent = yReversed ? 'y正方向を戻す' : 'y正方向を反転';
+            }
+
             function drawAxisOverlay() {
-                const ex = { x: Math.cos(axis.theta), y: Math.sin(axis.theta) };
-                const ey = { x: Math.sin(axis.theta), y: -Math.cos(axis.theta) };
-                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ex, '#10b981');
-                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ey, '#3b82f6');
+                const { ex, ey } = getAxisUnitVectors();
+                const lineWidth = getAxisLineWidth();
+                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ex, '#10b981', lineWidth);
+                drawInfiniteLine({ x: axis.ox, y: axis.oy }, ey, '#3b82f6', lineWidth);
+                drawPositiveAxisArrow(ex, '#10b981', '+x');
+                drawPositiveAxisArrow(ey, '#3b82f6', '+y');
                 ctx.fillStyle = '#f8fafc';
                 ctx.beginPath(); ctx.arc(axis.ox, axis.oy, AXIS_HANDLE_R, 0, Math.PI * 2); ctx.fill();
                 const hx = axis.ox + ex.x * AXIS_HANDLE_LEN;
                 const hy = axis.oy + ex.y * AXIS_HANDLE_LEN;
                 ctx.fillStyle = '#facc15';
                 ctx.beginPath(); ctx.arc(hx, hy, AXIS_HANDLE_R, 0, Math.PI * 2); ctx.fill();
-                ctx.font = '24px sans-serif';
-                ctx.fillStyle = '#10b981';
-                ctx.fillText('x', axis.ox + ex.x * (AXIS_HANDLE_LEN + 25), axis.oy + ex.y * (AXIS_HANDLE_LEN + 25));
-                ctx.fillStyle = '#3b82f6';
-                ctx.fillText('y', axis.ox + ey.x * (AXIS_HANDLE_LEN + 25), axis.oy + ey.y * (AXIS_HANDLE_LEN + 25));
             }
 
             function drawFrame() {
@@ -1084,7 +1278,7 @@
                         ctx.fillText(`${d.toFixed(1)} px`, (a.x + b.x) / 2 + 10, (a.y + b.y) / 2 - 10);
                     }
                 }
-                if (axisMode) drawAxisOverlay();
+                if (axisMode || (recordState === RECORD_FINISHED && showAxisAfterFinish)) drawAxisOverlay();
                 TRACKS.forEach(trackMeta => {
                     const pts = getTrackById(trackMeta.id).points;
                     if (!pts.length) return;
@@ -1098,9 +1292,12 @@
                     ctx.stroke();
                     for (let i = 0; i < pts.length; i++) {
                         ctx.fillStyle = trackMeta.pointColor;
+                        ctx.strokeStyle = 'rgba(15, 23, 42, .9)';
+                        ctx.lineWidth = 2;
                         ctx.beginPath();
                         ctx.arc(pts[i].xpx, pts[i].ypx, selected ? 6 : 4, 0, Math.PI * 2);
                         ctx.fill();
+                        ctx.stroke();
                     }
                     ctx.globalAlpha = 1;
                 });
@@ -1178,7 +1375,10 @@
                 if (calibMode && calibDragging) { calibEnd = getXY(e); }
                 if (axisMode && dragMode) {
                     if (dragMode === 'moveOrigin') { axis.ox = mousePos.x; axis.oy = mousePos.y; }
-                    else if (dragMode === 'rotate') { axis.theta = Math.atan2(mousePos.y - axis.oy, mousePos.x - axis.ox); }
+                    else if (dragMode === 'rotate') {
+                        const pointerAngle = Math.atan2(mousePos.y - axis.oy, mousePos.x - axis.ox);
+                        axis.theta = pointerAngle - (axis.xSign < 0 ? Math.PI : 0);
+                    }
                 }
                 drawFrame();
             }, { passive: false });
@@ -1196,7 +1396,7 @@
                 mousePos = p;
 
                 if (axisMode) {
-                    const ex = { x: Math.cos(axis.theta), y: Math.sin(axis.theta) };
+                    const { ex } = getAxisUnitVectors();
                     const hx = axis.ox + ex.x * AXIS_HANDLE_LEN;
                     const hy = axis.oy + ex.y * AXIS_HANDLE_LEN;
                     const hitR = AXIS_HANDLE_R * 3;
@@ -1290,8 +1490,8 @@
                 if (!scalePxPerMeter) return { xm: NaN, ym: NaN };
                 const vx = xpx - axis.ox, vy = ypx - axis.oy;
                 const c = Math.cos(axis.theta), s = Math.sin(axis.theta);
-                const xr_px = vx * c + vy * s;
-                const yr_px = vx * s + vy * (-c);
+                const xr_px = (vx * c + vy * s) * axis.xSign;
+                const yr_px = (vx * s + vy * (-c)) * axis.ySign;
                 return { xm: xr_px / scalePxPerMeter, ym: yr_px / scalePxPerMeter };
             }
 
@@ -1363,7 +1563,29 @@
             }
 
             function getTrackChartColor(trackId) {
-                return trackId === 'obj2' ? '#dc2626' : '#2563eb';
+                return TRACKS.find(track => track.id === trackId)?.pointColor || '#2563eb';
+            }
+
+            function getFirstPlotVideoTime() {
+                let firstTime = Infinity;
+                TRACKS.forEach(trackMeta => {
+                    getTrackById(trackMeta.id).points.forEach(point => {
+                        if (Number.isFinite(point.t)) firstTime = Math.min(firstTime, point.t);
+                    });
+                });
+                return Number.isFinite(firstTime) ? firstTime : 0;
+            }
+
+            function getGraphTimeOffset() {
+                return useVideoTimeForGraph ? 0 : getFirstPlotVideoTime();
+            }
+
+            function videoTimeToGraphTime(videoTime) {
+                return videoTime - getGraphTimeOffset();
+            }
+
+            function graphTimeToVideoTime(graphTime) {
+                return graphTime + getGraphTimeOffset();
             }
 
             function updateChartLegend() {
@@ -1400,18 +1622,22 @@
                                 dmin = Math.min(dmin, value);
                                 dmax = Math.max(dmax, value);
                             }
-                            return { x: timeVal, y: value };
+                            return { x: videoTimeToGraphTime(timeVal), y: value };
                         });
                         view.chart.data.datasets.push({
                             label: `${getTrackDisplayName(trackMeta.id)} ${view.mode.toUpperCase()}`,
                             data: scatterData,
-                            pointRadius: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBorderColor: '#0f172a',
+                            pointBorderWidth: 1,
                             tension: 0,
                             borderColor: color,
                             backgroundColor: color
                         });
                     });
 
+                    view.chart.options.scales.x.title.text = useVideoTimeForGraph ? '動画時刻 t [s]' : 't [s]（最初の記録 = 0）';
                     view.chart.options.scales.y.title.text = ylabel;
                     if (view.chart.data.datasets.length) {
                         if (!Number.isFinite(dmin) || !Number.isFinite(dmax)) { dmin = -1; dmax = 1; }
@@ -1627,6 +1853,22 @@
                 updateRecordButton();
                 drawFrame();
             };
+            btnFlipX.onclick = () => {
+                if (btnFlipX.disabled) return;
+                axis.xSign *= -1;
+                updateAxisDirectionButtons();
+                drawFrame();
+            };
+            btnFlipY.onclick = () => {
+                if (btnFlipY.disabled) return;
+                axis.ySign *= -1;
+                updateAxisDirectionButtons();
+                drawFrame();
+            };
+            axisOverlayToggle.addEventListener('change', () => {
+                showAxisAfterFinish = axisOverlayToggle.checked;
+                drawFrame();
+            });
             btnStartPlot.onclick = () => {
                 if (recordState === RECORDING) {
                     recordState = RECORD_FINISHED;
@@ -1658,6 +1900,7 @@
                     scalePxPerMeter = null;
                     calibMode = false; calibDragging = false; calibStart = calibEnd = null;
                     axisActive = false; axisMode = false;
+                    axis.theta = 0; axis.xSign = 1; axis.ySign = 1;
                     recordState = RECORD_IDLE;
                     activeCanvasPointers.clear();
                     pinchGesture = null;
@@ -1727,6 +1970,10 @@
                 regHalfWindowInput.value = String(value);
                 recompute();
             });
+            graphVideoTimeToggle.addEventListener('change', () => {
+                useVideoTimeForGraph = graphVideoTimeToggle.checked;
+                updateMainChart();
+            });
             btnGraphOnly.onclick = () => {
                 scrollArea.classList.add('graph-only');
                 chartSection.classList.add('graph-only');
@@ -1780,7 +2027,7 @@
                 currentTrackId = 'obj1';
                 if (trackSelect) trackSelect.value = currentTrackId;
                 scalePxPerMeter = null; calibMode = false; calibDragging = false;
-                axisActive = false; axisMode = false; axis.theta = 0;
+                axisActive = false; axisMode = false; axis.theta = 0; axis.xSign = 1; axis.ySign = 1;
                 recordState = RECORD_IDLE;
                 activeCanvasPointers.clear();
                 pinchGesture = null;
@@ -1808,6 +2055,8 @@
                 axisActive = false;
                 axisMode = false;
                 axis.theta = 0;
+                axis.xSign = 1;
+                axis.ySign = 1;
                 recordState = RECORD_IDLE;
                 activeCanvasPointers.clear();
                 pinchGesture = null;
@@ -1961,7 +2210,7 @@
                     chartViews.forEach(view => view.cursor.style.display = 'none');
                     return;
                 }
-                updateCursorsForTime(video.currentTime);
+                updateCursorsForTime(videoTimeToGraphTime(video.currentTime));
             }
 
             function updateCursorsForTime(timeValue) {
@@ -2104,12 +2353,13 @@
                 if (!view?.chart?.scales?.x) return;
                 const rect = view.box.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
-                let targetTime = view.chart.scales.x.getValueForPixel(mouseX);
+                const graphTime = view.chart.scales.x.getValueForPixel(mouseX);
+                let targetTime = graphTimeToVideoTime(graphTime);
                 targetTime = Math.max(0, Math.min(targetTime, video.duration || 0));
 
                 const chartArea = view.chart.chartArea;
                 if (chartArea && mouseX >= chartArea.left && mouseX <= chartArea.right) {
-                    updateCursorsForTime(targetTime);
+                    updateCursorsForTime(videoTimeToGraphTime(targetTime));
                 }
                 if (Number.isFinite(targetTime)) {
                     video.currentTime = targetTime;
