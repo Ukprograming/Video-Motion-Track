@@ -171,6 +171,18 @@
             border-radius: var(--radius);
         }
 
+        .toolbar .record-only {
+            display: none;
+        }
+
+        .toolbar.record-active .setup-only {
+            display: none;
+        }
+
+        .toolbar.record-active .record-only {
+            display: flex;
+        }
+
         /* --- Right Panel (Data) --- */
         .data-panel {
             width: var(--data-panel-width);
@@ -675,7 +687,7 @@
                     <button id="btnNext" class="icon-btn">▶</button>
                 </div>
 
-                <div class="tool-group">
+                <div class="tool-group setup-only">
                     <span style="font-size:11px; color:#aaa; margin-left:2px;">FPS</span>
                     <input id="fps" type="number" step="0.01" value="30">
                     <label style="font-size:11px; display:flex; align-items:center; margin:0 4px; white-space:nowrap;">
@@ -684,16 +696,16 @@
                 </div>
 
                 <div class="tool-group">
-                    <button id="btnCalib" class="accent">距離校正</button>
-                    <span style="font-size:11px; color:#aaa;">基準[m]</span>
-                    <input id="calibLength" type="number" step="0.01" min="0.001" value="1" style="width:72px;">
-                    <button id="btnAxis" class="accent" disabled>軸設定</button>
-                    <button id="btnFlipX" class="axis-flip" disabled style="font-size:11px;">x正方向を反転</button>
-                    <button id="btnFlipY" class="axis-flip" disabled style="font-size:11px;">y正方向を反転</button>
+                    <button id="btnCalib" class="accent setup-only">距離校正</button>
+                    <span class="setup-only" style="font-size:11px; color:#aaa;">基準[m]</span>
+                    <input id="calibLength" class="setup-only" type="number" step="0.01" min="0.001" value="1" style="width:72px;">
+                    <button id="btnAxis" class="accent setup-only" disabled>軸設定</button>
+                    <button id="btnFlipX" class="axis-flip setup-only" disabled style="font-size:11px;">x正方向を反転</button>
+                    <button id="btnFlipY" class="axis-flip setup-only" disabled style="font-size:11px;">y正方向を反転</button>
                     <button id="btnStartPlot" class="primary" disabled>記録開始</button>
                 </div>
 
-                <div class="tool-group">
+                <div class="tool-group record-only">
                     <span style="font-size:11px; color:#aaa;">追跡対象</span>
                     <select id="trackSelect" style="background:#000; border:1px solid var(--border); color:#fff; padding:6px; border-radius:4px; font-size:13px;">
                         <option value="obj1">物体1</option>
@@ -701,7 +713,7 @@
                     </select>
                 </div>
 
-                <div class="tool-group">
+                <div class="tool-group record-only">
                     <button id="btnUndo" class="warn">戻す</button>
                     <button id="btnClear" class="danger">消去</button>
                 </div>
@@ -757,10 +769,10 @@
                     <div class="chart-controls">
                         <button class="modeBtn" data-mode="xt" style="padding:4px 8px; font-size:11px;">x-t</button>
                         <button class="modeBtn" data-mode="yt" style="padding:4px 8px; font-size:11px;">y-t</button>
-                        <button class="modeBtn" data-mode="vxt" style="padding:4px 8px; font-size:11px;">vx</button>
-                        <button class="modeBtn" data-mode="vyt" style="padding:4px 8px; font-size:11px;">vy</button>
-                        <button class="modeBtn" data-mode="axt" style="padding:4px 8px; font-size:11px;">ax</button>
-                        <button class="modeBtn" data-mode="ayt" style="padding:4px 8px; font-size:11px;">ay</button>
+                        <button class="modeBtn" data-mode="vxt" style="padding:4px 8px; font-size:11px;">v<sub>x</sub>-t</button>
+                        <button class="modeBtn" data-mode="vyt" style="padding:4px 8px; font-size:11px;">v<sub>y</sub>-t</button>
+                        <button class="modeBtn" data-mode="axt" style="padding:4px 8px; font-size:11px;">a<sub>x</sub>-t</button>
+                        <button class="modeBtn" data-mode="ayt" style="padding:4px 8px; font-size:11px;">a<sub>y</sub>-t</button>
                         <div class="chart-tools">
                             <button id="btnGraphOnly" style="padding:4px 6px; font-size:10px;">グラフのみ</button>
                             <button id="btnPNGCurrent" style="padding:4px 6px; font-size:10px;">画像</button>
@@ -816,6 +828,7 @@
             const appGrid = document.querySelector('.app-grid');
             const videoPanel = document.querySelector('.video-panel');
             const canvasWrapper = document.querySelector('.canvas-wrapper');
+            const toolbar = document.querySelector('.toolbar');
             const dataPanel = document.querySelector('.data-panel');
             const splitter = document.getElementById('splitter');
             const btnKpiToggle = document.getElementById('btnKpiToggle');
@@ -889,6 +902,9 @@
             const AXIS_DISPLAY_LINE_WIDTH = 4;
             const AXIS_ARROW_LENGTH = 18;
             const AXIS_ARROW_WIDTH = 15;
+            const VIDEO_POINT_RADIUS = 6;
+            const CHART_POINT_RADIUS = 3;
+            const CHART_POINT_HOVER_RADIUS = 5;
             const RECORD_IDLE = 'idle';
             const RECORDING = 'recording';
             const RECORD_FINISHED = 'finished';
@@ -1091,6 +1107,10 @@
             }
 
             function updateRecordButton() {
+                const recordControlsActive = recordState !== RECORD_IDLE;
+                const toolbarModeChanged = toolbar.classList.contains('record-active') !== recordControlsActive;
+                toolbar.classList.toggle('record-active', recordControlsActive);
+                if (toolbarModeChanged) requestAnimationFrame(refreshResponsiveLayout);
                 const canAdjustAxis = axisMode && recordState === RECORD_IDLE && scalePxPerMeter != null;
                 btnFlipX.disabled = !canAdjustAxis;
                 btnFlipY.disabled = !canAdjustAxis;
@@ -1290,12 +1310,13 @@
                     ctx.moveTo(pts[0].xpx, pts[0].ypx);
                     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].xpx, pts[i].ypx);
                     ctx.stroke();
+                    ctx.globalAlpha = 1;
                     for (let i = 0; i < pts.length; i++) {
                         ctx.fillStyle = trackMeta.pointColor;
                         ctx.strokeStyle = 'rgba(15, 23, 42, .9)';
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.arc(pts[i].xpx, pts[i].ypx, selected ? 6 : 4, 0, Math.PI * 2);
+                        ctx.arc(pts[i].xpx, pts[i].ypx, VIDEO_POINT_RADIUS, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.stroke();
                     }
@@ -1627,8 +1648,8 @@
                         view.chart.data.datasets.push({
                             label: `${getTrackDisplayName(trackMeta.id)} ${view.mode.toUpperCase()}`,
                             data: scatterData,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
+                            pointRadius: CHART_POINT_RADIUS,
+                            pointHoverRadius: CHART_POINT_HOVER_RADIUS,
                             pointBorderColor: '#0f172a',
                             pointBorderWidth: 1,
                             tension: 0,
