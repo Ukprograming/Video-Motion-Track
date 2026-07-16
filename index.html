@@ -978,7 +978,25 @@
                             x: { type: 'linear', min: 0, title: { display: true, text: 't [s]', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } },
                             y: { title: { display: false, text: '', color: '#000' }, ticks: { color: '#000' }, grid: { color: '#cbd5e1' }, border: { color: '#000' } }
                         },
-                        plugins: { legend: { display: false } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                displayColors: false,
+                                callbacks: {
+                                    title(items) {
+                                        if (!items.length || items[0].chart.data.datasets.length < 2) return '';
+                                        return getTrackDisplayName(items[0].dataset.trackId);
+                                    },
+                                    label(context) {
+                                        const valueParts = getChartTooltipValueParts(chartMode);
+                                        return [
+                                            `t=${formatTooltipNumber(context.parsed.x)}[s]`,
+                                            `${valueParts.symbol}=${formatTooltipNumber(context.parsed.y)}[${valueParts.unit}]`
+                                        ];
+                                    }
+                                }
+                            }
+                        },
                         layout: { padding: { left: 16 } }
                     },
                     plugins: [chartBgPlugin, customYAxisTitlePlugin]
@@ -1579,6 +1597,22 @@
                 }
             }
 
+            function getChartTooltipValueParts(chartMode) {
+                switch (chartMode) {
+                    case 'yt': return { symbol: 'y', unit: 'm' };
+                    case 'vxt': return { symbol: 'vₓ', unit: 'm/s' };
+                    case 'vyt': return { symbol: 'vᵧ', unit: 'm/s' };
+                    case 'axt': return { symbol: 'aₓ', unit: 'm/s²' };
+                    case 'ayt': return { symbol: 'aᵧ', unit: 'm/s²' };
+                    case 'xt':
+                    default: return { symbol: 'x', unit: 'm' };
+                }
+            }
+
+            function formatTooltipNumber(value) {
+                return Number.isFinite(value) ? value.toFixed(3) : '—';
+            }
+
             function getTrackDisplayName(trackId) {
                 return trackId === 'obj2' ? '物体2' : '物体1';
             }
@@ -1647,6 +1681,7 @@
                         });
                         view.chart.data.datasets.push({
                             label: `${getTrackDisplayName(trackMeta.id)} ${view.mode.toUpperCase()}`,
+                            trackId: trackMeta.id,
                             data: scatterData,
                             pointRadius: CHART_POINT_RADIUS,
                             pointHoverRadius: CHART_POINT_HOVER_RADIUS,
@@ -1993,7 +2028,7 @@
             });
             graphVideoTimeToggle.addEventListener('change', () => {
                 useVideoTimeForGraph = graphVideoTimeToggle.checked;
-                updateMainChart();
+                recompute();
             });
             btnGraphOnly.onclick = () => {
                 scrollArea.classList.add('graph-only');
@@ -2101,7 +2136,8 @@
                 const points = getCurrentPoints();
                 let html = '';
                 for (let i = 0; i < points.length; i++) {
-                    html += `<tr><td>${i}</td><td>${(t[i] ?? NaN).toFixed(3)}</td><td>${(x[i] ?? NaN).toFixed(3)}</td><td>${(y[i] ?? NaN).toFixed(3)}</td><td>${(vx[i] ?? NaN).toFixed(2)}</td><td>${(vy[i] ?? NaN).toFixed(2)}</td></tr>`;
+                    const displayedTime = videoTimeToGraphTime(t[i] ?? NaN);
+                    html += `<tr><td>${i}</td><td>${displayedTime.toFixed(3)}</td><td>${(x[i] ?? NaN).toFixed(3)}</td><td>${(y[i] ?? NaN).toFixed(3)}</td><td>${(vx[i] ?? NaN).toFixed(2)}</td><td>${(vy[i] ?? NaN).toFixed(2)}</td></tr>`;
                 }
                 tb.innerHTML = html;
             }
