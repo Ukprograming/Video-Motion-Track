@@ -63,6 +63,33 @@
             align-items: center;
         }
 
+        .header-main,
+        .header-actions,
+        .analysis-controls {
+            display: flex;
+            align-items: center;
+        }
+
+        .header-main {
+            gap: 10px;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .header-actions {
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .analysis-controls {
+            gap: 6px;
+        }
+
+        .header-action {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
         /* --- Main Layout --- */
         .app-grid {
             --data-panel-width: 360px;
@@ -655,18 +682,53 @@
                 padding: 6px 10px;
             }
         }
+
+        @media (max-width: 520px) {
+            header {
+                padding: 0 6px;
+                gap: 4px;
+            }
+
+            h1 {
+                display: none;
+            }
+
+            .header-main {
+                flex: 1;
+            }
+
+            input[type="file"] {
+                max-width: 135px;
+            }
+
+            .header-actions,
+            .analysis-controls {
+                gap: 4px;
+            }
+
+            .header-action {
+                padding: 4px 6px;
+            }
+        }
     </style>
 </head>
 
 <body>
     <header>
-        <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
+        <div class="header-main">
             <h1>動画運動解析</h1>
             <input id="file" type="file" accept="video/*" />
         </div>
-        <div class="header-controls">
-            <button id="btnDemo" class="warn" style="padding:4px 8px; font-size:11px;">サンプル動画</button>
-            <button id="btnCSV" class="primary" style="padding:4px 8px; font-size:11px;">csvダウンロード</button>
+        <div class="header-actions">
+            <div class="analysis-controls" aria-label="解析データの保存と読み込み">
+                <button id="btnAnalysisSave" class="header-action" title="動画を含まない解析データを保存">解析保存</button>
+                <button id="btnAnalysisOpen" class="header-action" title="現在の動画に解析データを読み込む">解析を開く</button>
+                <input id="analysisFile" type="file" accept="application/json,.json" hidden />
+            </div>
+            <div class="header-controls">
+                <button id="btnDemo" class="warn header-action">サンプル動画</button>
+                <button id="btnCSV" class="primary header-action">csvダウンロード</button>
+            </div>
         </div>
     </header>
 
@@ -862,6 +924,9 @@
             const kFPS = document.getElementById('kFPS');
             const btnCSV = document.getElementById('btnCSV');
             const btnCSVMobile = document.getElementById('btnCSVMobile');
+            const btnAnalysisSave = document.getElementById('btnAnalysisSave');
+            const btnAnalysisOpen = document.getElementById('btnAnalysisOpen');
+            const analysisFile = document.getElementById('analysisFile');
             const btnPNGCurrent = document.getElementById('btnPNGCurrent');
             const btnGraphOnly = document.getElementById('btnGraphOnly');
             const btnGraphRestore = document.getElementById('btnGraphRestore');
@@ -876,6 +941,9 @@
             const modeButtons = document.querySelectorAll('.modeBtn');
 
             // State
+            const ANALYSIS_FORMAT = 'video-motion-track-analysis';
+            const ANALYSIS_VERSION = 1;
+            const CHART_MODES = ['xt', 'yt', 'vxt', 'vyt', 'axt', 'ayt'];
             const TRACKS = [
                 { id: 'obj1', label: '物体1', lineColor: '#00d9ff', pointColor: '#00d9ff' },
                 { id: 'obj2', label: '物体2', lineColor: '#fb923c', pointColor: '#f97316' }
@@ -891,6 +959,7 @@
             let regressionHalfWindow = 1;
             let useVideoTimeForGraph = false;
             let showAxisAfterFinish = false;
+            let currentVideoInfo = null;
 
             // Calibration & Axis
             let calibStart = null, calibEnd = null, calibDragging = false;
@@ -1970,6 +2039,328 @@
                 }
             };
 
+            function isVideoLoaded() {
+                return video.readyState >= 1
+                    && video.videoWidth > 0
+                    && video.videoHeight > 0
+                    && Number.isFinite(video.duration);
+            }
+
+            function hasAnalysisData() {
+                return TRACKS.some(trackMeta => getTrackById(trackMeta.id).points.length > 0);
+            }
+
+            function hasExistingAnalysisState() {
+                return hasAnalysisData() || scalePxPerMeter != null || axisActive || axisMode;
+            }
+
+            function safeAnalysisFilename() {
+                const sourceName = currentVideoInfo?.name || 'motion';
+                const baseName = sourceName.replace(/\.[^.]+$/, '') || 'motion';
+                const safeBase = baseName.replace(/[\\/:*?"<>|\x00-\x1F]/g, '_').trim() || 'motion';
+                return `${safeBase}_motion_analysis.json`;
+            }
+
+            function createAnalysisPayload() {
+                const fpsValue = Number(fpsInput.value);
+                const safeFps = Number.isFinite(fpsValue) && fpsValue > 5 && fpsValue < 240 ? fpsValue : 30;
+                const referenceValue = Number(calibLengthInput.value);
+                const safeReferenceMeters = Number.isFinite(referenceValue) && referenceValue > 0 ? referenceValue : 1;
+                return {
+                    format: ANALYSIS_FORMAT,
+                    version: ANALYSIS_VERSION,
+                    savedAt: new Date().toISOString(),
+                    video: {
+                        name: currentVideoInfo?.name || '',
+                        size: Number.isFinite(currentVideoInfo?.size) ? currentVideoInfo.size : null,
+                        lastModified: Number.isFinite(currentVideoInfo?.lastModified) ? currentVideoInfo.lastModified : null,
+                        duration: video.duration,
+                        width: video.videoWidth,
+                        height: video.videoHeight
+                    },
+                    analysis: {
+                        tracks: Object.fromEntries(TRACKS.map(trackMeta => {
+                            const track = getTrackById(trackMeta.id);
+                            return [trackMeta.id, {
+                                origin: track.origin ? { ...track.origin } : null,
+                                points: track.points.map(point => ({ ...point }))
+                            }];
+                        })),
+                        scalePxPerMeter,
+                        calibrationReferenceMeters: safeReferenceMeters,
+                        axis: { ...axis },
+                        axisActive,
+                        recordState,
+                        currentTrackId,
+                        currentTime: video.currentTime,
+                        settings: {
+                            fps: safeFps,
+                            autoStep: autoStep.checked,
+                            regressionHalfWindow,
+                            useVideoTimeForGraph,
+                            selectedChartModes: [...selectedChartModes],
+                            chartHeightWeights: [...chartHeightWeights],
+                            chartTrackVisible: { ...chartTrackVisible },
+                            showAxisAfterFinish
+                        }
+                    }
+                };
+            }
+
+            function downloadAnalysis() {
+                if (!isVideoLoaded()) {
+                    alert('先に動画を読み込んでください。解析データは、対応する動画を読み込んだ後に保存できます。');
+                    return;
+                }
+                if (!hasAnalysisData()) {
+                    alert('保存する解析データがありません。');
+                    return;
+                }
+                const json = JSON.stringify(createAnalysisPayload(), null, 2);
+                const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = safeAnalysisFilename();
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+            }
+
+            function requireFiniteNumber(value, label) {
+                if (!Number.isFinite(value)) throw new Error(`${label}が不正です。`);
+                return value;
+            }
+
+            function validateOrigin(value, label) {
+                if (value == null) return null;
+                if (typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}が不正です。`);
+                return {
+                    xm: requireFiniteNumber(value.xm, `${label}.xm`),
+                    ym: requireFiniteNumber(value.ym, `${label}.ym`)
+                };
+            }
+
+            function validateTrack(value, trackId) {
+                if (!value || typeof value !== 'object' || !Array.isArray(value.points)) {
+                    throw new Error(`${trackId}の記録データが不正です。`);
+                }
+                if (value.points.length > 200000) throw new Error(`${trackId}の記録点数が多すぎます。`);
+                const points = value.points.map((point, index) => {
+                    if (!point || typeof point !== 'object') throw new Error(`${trackId}の記録点${index + 1}が不正です。`);
+                    const validated = {
+                        t: requireFiniteNumber(point.t, `${trackId}の時刻`),
+                        xpx: requireFiniteNumber(point.xpx, `${trackId}のx座標`),
+                        ypx: requireFiniteNumber(point.ypx, `${trackId}のy座標`),
+                        xm: requireFiniteNumber(point.xm, `${trackId}のx位置`),
+                        ym: requireFiniteNumber(point.ym, `${trackId}のy位置`)
+                    };
+                    if (validated.t < 0) throw new Error(`${trackId}の時刻が不正です。`);
+                    return validated;
+                });
+                points.sort((a, b) => a.t - b.t);
+                return { origin: validateOrigin(value.origin, `${trackId}の原点`), points };
+            }
+
+            function validateAnalysisPayload(payload) {
+                if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                    throw new Error('解析データの形式が不正です。');
+                }
+                if (payload.format !== ANALYSIS_FORMAT) throw new Error('このアプリの解析データではありません。');
+                if (payload.version !== ANALYSIS_VERSION) {
+                    throw new Error(`対応していない解析データのバージョンです（version: ${String(payload.version)}）。`);
+                }
+                const savedVideo = payload.video;
+                const savedAnalysis = payload.analysis;
+                if (!savedVideo || typeof savedVideo !== 'object' || !savedAnalysis || typeof savedAnalysis !== 'object') {
+                    throw new Error('解析データに必要な情報がありません。');
+                }
+                const validatedVideo = {
+                    name: typeof savedVideo.name === 'string' ? savedVideo.name : '',
+                    size: savedVideo.size == null ? null : requireFiniteNumber(savedVideo.size, '動画ファイルサイズ'),
+                    lastModified: savedVideo.lastModified == null ? null : requireFiniteNumber(savedVideo.lastModified, '動画更新日時'),
+                    duration: requireFiniteNumber(savedVideo.duration, '動画再生時間'),
+                    width: requireFiniteNumber(savedVideo.width, '動画幅'),
+                    height: requireFiniteNumber(savedVideo.height, '動画高さ')
+                };
+                if (validatedVideo.duration < 0 || validatedVideo.width <= 0 || validatedVideo.height <= 0) {
+                    throw new Error('保存時の動画情報が不正です。');
+                }
+                if (!savedAnalysis.tracks || typeof savedAnalysis.tracks !== 'object') {
+                    throw new Error('追跡データがありません。');
+                }
+                const validatedTracks = Object.fromEntries(TRACKS.map(trackMeta => [
+                    trackMeta.id,
+                    validateTrack(savedAnalysis.tracks[trackMeta.id], trackMeta.id)
+                ]));
+                const validatedScale = requireFiniteNumber(savedAnalysis.scalePxPerMeter, '距離校正値');
+                if (validatedScale <= 0) throw new Error('距離校正値が不正です。');
+                const savedAxis = savedAnalysis.axis;
+                if (!savedAxis || typeof savedAxis !== 'object') throw new Error('座標軸データがありません。');
+                const validatedAxis = {
+                    ox: requireFiniteNumber(savedAxis.ox, '座標軸の原点x'),
+                    oy: requireFiniteNumber(savedAxis.oy, '座標軸の原点y'),
+                    theta: requireFiniteNumber(savedAxis.theta, '座標軸の角度'),
+                    xSign: savedAxis.xSign === -1 ? -1 : 1,
+                    ySign: savedAxis.ySign === -1 ? -1 : 1
+                };
+                const settings = savedAnalysis.settings;
+                if (!settings || typeof settings !== 'object') throw new Error('解析設定がありません。');
+                const fps = requireFiniteNumber(settings.fps, 'FPS');
+                if (fps <= 5 || fps >= 240) throw new Error('FPSが不正です。');
+                const regressionWindow = requireFiniteNumber(settings.regressionHalfWindow, '回帰範囲');
+                if (!Number.isInteger(regressionWindow) || regressionWindow < 1 || regressionWindow > 1000) {
+                    throw new Error('回帰範囲が不正です。');
+                }
+                if (!Array.isArray(settings.selectedChartModes)) throw new Error('グラフ設定が不正です。');
+                const modes = [...new Set(settings.selectedChartModes)];
+                if (!modes.length || modes.length > 3 || modes.some(mode => !CHART_MODES.includes(mode))) {
+                    throw new Error('グラフ設定が不正です。');
+                }
+                const weights = Array.isArray(settings.chartHeightWeights)
+                    && settings.chartHeightWeights.length === modes.length
+                    && settings.chartHeightWeights.every(weight => Number.isFinite(weight) && weight > 0)
+                    ? [...settings.chartHeightWeights]
+                    : modes.map(() => 1);
+                const savedTrackId = TRACKS.some(trackMeta => trackMeta.id === savedAnalysis.currentTrackId)
+                    ? savedAnalysis.currentTrackId
+                    : 'obj1';
+                const savedRecordState = [RECORD_IDLE, RECORDING, RECORD_FINISHED].includes(savedAnalysis.recordState)
+                    ? savedAnalysis.recordState
+                    : RECORD_FINISHED;
+                const referenceMeters = requireFiniteNumber(savedAnalysis.calibrationReferenceMeters, '校正基準長');
+                if (referenceMeters <= 0) throw new Error('校正基準長が不正です。');
+                const currentTime = requireFiniteNumber(savedAnalysis.currentTime, '動画位置');
+                return {
+                    video: validatedVideo,
+                    analysis: {
+                        tracks: validatedTracks,
+                        scalePxPerMeter: validatedScale,
+                        calibrationReferenceMeters: referenceMeters,
+                        axis: validatedAxis,
+                        axisActive: savedAnalysis.axisActive === true,
+                        recordState: savedRecordState,
+                        currentTrackId: savedTrackId,
+                        currentTime: Math.max(0, currentTime),
+                        settings: {
+                            fps,
+                            autoStep: settings.autoStep === true,
+                            regressionHalfWindow: regressionWindow,
+                            useVideoTimeForGraph: settings.useVideoTimeForGraph === true,
+                            selectedChartModes: modes,
+                            chartHeightWeights: weights,
+                            chartTrackVisible: {
+                                obj1: settings.chartTrackVisible?.obj1 !== false,
+                                obj2: settings.chartTrackVisible?.obj2 !== false
+                            },
+                            showAxisAfterFinish: settings.showAxisAfterFinish === true
+                        }
+                    }
+                };
+            }
+
+            function getVideoMismatchReasons(savedVideo) {
+                const reasons = [];
+                if (savedVideo.name && currentVideoInfo?.name && savedVideo.name !== currentVideoInfo.name) {
+                    reasons.push(`ファイル名（保存時: ${savedVideo.name} / 現在: ${currentVideoInfo.name}）`);
+                }
+                if (Number.isFinite(savedVideo.size) && Number.isFinite(currentVideoInfo?.size) && savedVideo.size !== currentVideoInfo.size) {
+                    reasons.push('ファイルサイズ');
+                }
+                if (savedVideo.width !== video.videoWidth || savedVideo.height !== video.videoHeight) {
+                    reasons.push(`解像度（保存時: ${savedVideo.width}×${savedVideo.height} / 現在: ${video.videoWidth}×${video.videoHeight}）`);
+                }
+                const durationTolerance = Math.max(0.1, savedVideo.duration * 0.005);
+                if (Math.abs(savedVideo.duration - video.duration) > durationTolerance) {
+                    reasons.push(`再生時間（保存時: ${savedVideo.duration.toFixed(3)}秒 / 現在: ${video.duration.toFixed(3)}秒）`);
+                }
+                return reasons;
+            }
+
+            function applyAnalysisData(validated) {
+                const saved = validated.analysis;
+                video.pause();
+                tracks = saved.tracks;
+                scalePxPerMeter = saved.scalePxPerMeter;
+                axis = saved.axis;
+                axisActive = saved.axisActive;
+                axisMode = false;
+                calibMode = false;
+                calibDragging = false;
+                calibStart = calibEnd = null;
+                recordState = saved.recordState;
+                currentTrackId = saved.currentTrackId;
+                regressionHalfWindow = saved.settings.regressionHalfWindow;
+                useVideoTimeForGraph = saved.settings.useVideoTimeForGraph;
+                selectedChartModes = saved.settings.selectedChartModes;
+                chartHeightWeights = saved.settings.chartHeightWeights;
+                chartTrackVisible = saved.settings.chartTrackVisible;
+                showAxisAfterFinish = saved.settings.showAxisAfterFinish;
+
+                fpsInput.value = saved.settings.fps.toFixed(2);
+                kFPS.textContent = saved.settings.fps.toFixed(2);
+                autoStep.checked = saved.settings.autoStep;
+                calibLengthInput.value = String(saved.calibrationReferenceMeters);
+                regHalfWindowInput.value = String(regressionHalfWindow);
+                graphVideoTimeToggle.checked = useVideoTimeForGraph;
+                trackSelect.value = currentTrackId;
+                chartTrackToggles.forEach(toggle => {
+                    toggle.checked = chartTrackVisible[toggle.value] !== false;
+                });
+                scaleInfo.textContent = `校正済み (${scalePxPerMeter.toFixed(2)} px/m)`;
+                kScale.textContent = scalePxPerMeter.toFixed(2);
+                btnAxis.disabled = false;
+                axisOverlayToggle.checked = showAxisAfterFinish;
+                activeCanvasPointers.clear();
+                pinchGesture = null;
+                tapCandidate = null;
+                resetCanvasView();
+                updateRecordButton();
+                refreshCurrentTrackInfo();
+                recompute();
+                drawFrame();
+                const targetTime = Math.min(saved.currentTime, Math.max(0, video.duration - 0.001));
+                video.currentTime = targetTime;
+                updateCursorFromVideo();
+            }
+
+            async function openAnalysisFile(selectedFile) {
+                let parsed;
+                try {
+                    parsed = JSON.parse(await selectedFile.text());
+                } catch (_) {
+                    alert('解析データを読み込めませんでした。JSONファイルが壊れている可能性があります。');
+                    return;
+                }
+                let validated;
+                try {
+                    validated = validateAnalysisPayload(parsed);
+                } catch (error) {
+                    alert(`解析データを読み込めませんでした。\n${error.message}`);
+                    return;
+                }
+                const mismatchReasons = getVideoMismatchReasons(validated.video);
+                if (mismatchReasons.length && !confirm(
+                    `選択中の動画と、解析データ保存時の動画情報が一致しません。\n\n${mismatchReasons.map(reason => `・${reason}`).join('\n')}\n\n別の動画に読み込むと、計測点の位置や時刻がずれる可能性があります。読み込みを続けますか？`
+                )) return;
+                if (hasExistingAnalysisState() && !confirm('現在の解析データを、読み込んだデータで置き換えますか？')) return;
+                applyAnalysisData(validated);
+                alert('解析データを読み込みました。');
+            }
+
+            btnAnalysisSave.onclick = downloadAnalysis;
+            btnAnalysisOpen.onclick = () => {
+                if (!isVideoLoaded()) {
+                    alert('先に動画を読み込んでください。解析データは、対応する動画を読み込んだ後に開けます。');
+                    return;
+                }
+                analysisFile.value = '';
+                analysisFile.click();
+            };
+            analysisFile.addEventListener('change', async event => {
+                const selectedFile = event.target.files?.[0];
+                if (selectedFile) await openAnalysisFile(selectedFile);
+            });
+
             const csvCell = value => {
                 if (value == null) return '';
                 const text = String(value);
@@ -2059,17 +2450,33 @@
 
             file.addEventListener('change', async (e) => {
                 if (!e.target.files || !e.target.files[0]) return;
-                await loadVideo(URL.createObjectURL(e.target.files[0]));
+                const selectedVideo = e.target.files[0];
+                await loadVideo(URL.createObjectURL(selectedVideo), {
+                    name: selectedVideo.name,
+                    size: selectedVideo.size,
+                    lastModified: selectedVideo.lastModified
+                });
             });
             btnDemo.onclick = async () => {
-                try { await loadVideo(DEMO_URL); } catch (e) { alert('デモ動画を読み込めませんでした'); }
+                try {
+                    await loadVideo(DEMO_URL, { name: 'demo_faststart.mp4', size: null, lastModified: null });
+                } catch (e) {
+                    alert('デモ動画を読み込めませんでした');
+                }
             };
 
-            async function loadVideo(url) {
+            async function loadVideo(url, sourceInfo = {}) {
                 resetAll();
+                currentVideoInfo = null;
                 video.src = url;
                 video.load();
                 await new Promise(res => video.addEventListener('loadedmetadata', res, { once: true }));
+
+                currentVideoInfo = {
+                    name: typeof sourceInfo.name === 'string' ? sourceInfo.name : '',
+                    size: Number.isFinite(sourceInfo.size) ? sourceInfo.size : null,
+                    lastModified: Number.isFinite(sourceInfo.lastModified) ? sourceInfo.lastModified : null
+                };
 
                 detectFPSOnce();
 
