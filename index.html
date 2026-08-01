@@ -1493,6 +1493,7 @@
 
             canvas.addEventListener('pointerdown', e => {
                 e.preventDefault();
+                if (frameStepInProgress) return;
                 activeCanvasPointers.set(e.pointerId, e);
                 if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
                 if (activeCanvasPointers.size >= 2) {
@@ -1558,7 +1559,7 @@
                     const isTap = !tapCandidate.moved && elapsed <= TAP_TIME_LIMIT;
                     tapCandidate = null;
                     if (canRecord && isTap) {
-                        recordPoint(p.x, p.y, video.currentTime);
+                        recordPoint(p.x, p.y, getDisplayedFrameTime());
                         if (autoStep.checked) await stepFrame(+1);
                     } else if (recordState === RECORD_IDLE && isTap) {
                         if (scalePxPerMeter == null) alert('手順:「距離校正」を行ってください。');
@@ -1621,6 +1622,12 @@
                 refreshCurrentTrackInfo();
                 recompute();
                 drawFrame();
+            }
+
+            function getDisplayedFrameTime() {
+                return Number.isFinite(lastPresentedMediaTime)
+                    ? Math.max(0, lastPresentedMediaTime)
+                    : Math.max(0, video.currentTime || 0);
             }
 
             function recompute() {
@@ -1885,6 +1892,32 @@
 
             // Frame stepping
             let seekToken = 0;
+            let lastPresentedMediaTime = null;
+            let frameTrackerCallbackId = null;
+            let frameStepInProgress = false;
+            const FRAME_MEDIA_EPSILON = 0.00001;
+
+            function stopFrameTracking() {
+                if (frameTrackerCallbackId != null && video.cancelVideoFrameCallback) {
+                    try { video.cancelVideoFrameCallback(frameTrackerCallbackId); } catch (_) { }
+                }
+                frameTrackerCallbackId = null;
+                lastPresentedMediaTime = null;
+            }
+
+            function startFrameTracking() {
+                stopFrameTracking();
+                if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+
+                const observeFrame = (_, info) => {
+                    if (Number.isFinite(info?.mediaTime)) {
+                        lastPresentedMediaTime = info.mediaTime;
+                    }
+                    frameTrackerCallbackId = video.requestVideoFrameCallback(observeFrame);
+                };
+                frameTrackerCallbackId = video.requestVideoFrameCallback(observeFrame);
+            }
+
             function getFrameDuration() {
                 const fps = parseFloat(fpsInput.value);
                 const safeFps = Number.isFinite(fps) && fps > 5 && fps < 240 ? fps : 30;
@@ -1892,31 +1925,84 @@
             }
 
             async function stepFrame(dir) {
+                if (frameStepInProgress) return;
+                frameStepInProgress = true;
                 video.pause();
                 playing = false;
                 btnPlay.textContent = '再生';
 
-                const duration = Number.isFinite(video.duration) ? video.duration : 0;
-                if (!duration) return;
+                try {
+                    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+                    if (!duration) return;
 
-                const frameDur = getFrameDuration();
-                const startTime = video.currentTime || 0;
-                const endCap = Math.max(0, duration - 0.001);
-                const minProgress = Math.max(0.001, frameDur * 0.25);
-                const retryOffsets = dir > 0 ? [1, 1.25, 1.5, 2, 2.5] : [1, 1.25, 1.5, 2];
-                let lastObserved = startTime;
+                    const frameDur = getFrameDuration();
+                    const startTime = video.currentTime || 0;
+                    const endCap = Math.max(0, duration - 0.001);
+                    let sourceMediaTime = Number.isFinite(lastPresentedMediaTime)
+                        ? lastPresentedMediaTime
+                        : null;
 
-                for (const offset of retryOffsets) {
-                    const targetTime = Math.max(0, Math.min(endCap, startTime + dir * frameDur * offset));
-                    if (Math.abs(targetTime - video.currentTime) < 0.0001) continue;
-                    lastObserved = await seekTo(targetTime);
-                    const movedForward = dir > 0 && lastObserved > startTime + minProgress;
-                    const movedBackward = dir < 0 && lastObserved < startTime - minProgress;
-                    if (movedForward || movedBackward || targetTime === 0 || targetTime === endCap) return;
+                    if (sourceMediaTime == null && 'requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                        const probeTime = Math.max(0, Math.min(endCap, startTime + 0.0001));
+                        const probe = await seekTo(probeTime);
+                        sourceMediaTime = probe.mediaTime;
+                    }
+
+                    if (Number.isFinite(sourceMediaTime)) {
+                        const retryOffsets = dir > 0
+                            ? [1.01, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8]
+                            : [0.02, 0.05, 0.1, 0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 8];
+                        let lastResult = {
+                            currentTime: startTime,
+                            mediaTime: sourceMediaTime
+                        };
+
+                        for (const offset of retryOffsets) {
+                            const targetTime = Math.max(
+                                0,
+                                Math.min(endCap, sourceMediaTime + dir * frameDur * offset)
+                            );
+                            if (Math.abs(targetTime - video.currentTime) < 0.000001) continue;
+
+                            lastResult = await seekTo(targetTime);
+                            const movedForward = dir > 0
+                                && Number.isFinite(lastResult.mediaTime)
+                                && lastResult.mediaTime > sourceMediaTime + FRAME_MEDIA_EPSILON;
+                            const movedBackward = dir < 0
+                                && Number.isFinite(lastResult.mediaTime)
+                                && lastResult.mediaTime < sourceMediaTime - FRAME_MEDIA_EPSILON;
+                            if (movedForward || movedBackward || targetTime === 0 || targetTime === endCap) {
+                                return lastResult.currentTime;
+                            }
+                        }
+
+                        drawFrame();
+                        return lastResult.currentTime;
+                    }
+
+                    // Older browsers without requestVideoFrameCallback retain the
+                    // nominal-FPS fallback.
+                    const minProgress = Math.max(0.001, frameDur * 0.25);
+                    const retryOffsets = dir > 0 ? [1, 1.25, 1.5, 2, 2.5] : [1, 1.25, 1.5, 2];
+                    let lastObserved = startTime;
+
+                    for (const offset of retryOffsets) {
+                        const targetTime = Math.max(0, Math.min(endCap, startTime + dir * frameDur * offset));
+                        if (Math.abs(targetTime - video.currentTime) < 0.0001) continue;
+                        const result = await seekTo(targetTime);
+                        lastObserved = result.currentTime;
+                        const movedForward = dir > 0 && lastObserved > startTime + minProgress;
+                        const movedBackward = dir < 0 && lastObserved < startTime - minProgress;
+                        if (movedForward || movedBackward || targetTime === 0 || targetTime === endCap) {
+                            return lastObserved;
+                        }
+                    }
+
+                    drawFrame();
+                    return lastObserved;
+                } finally {
+                    frameStepInProgress = false;
                 }
-
-                drawFrame();
-                return lastObserved;
             }
 
             function seekTo(t) {
@@ -1924,24 +2010,33 @@
                 return new Promise(res => {
                     let settled = false;
                     let frameCallbackId = null;
-                    const finish = () => {
+                    const finish = (frameInfo = null) => {
                         if (settled) return;
+                        const mediaTime = Number.isFinite(frameInfo?.mediaTime)
+                            ? frameInfo.mediaTime
+                            : (Number.isFinite(lastPresentedMediaTime) ? lastPresentedMediaTime : null);
+                        if (Number.isFinite(mediaTime)) {
+                            lastPresentedMediaTime = mediaTime;
+                        }
                         if (token !== seekToken) {
                             settled = true;
                             clearTimeout(timer);
                             video.removeEventListener('seeked', onSeeked);
-                            res(video.currentTime);
+                            res({ currentTime: video.currentTime, mediaTime });
                             return;
                         }
                         settled = true;
                         clearTimeout(timer);
                         video.removeEventListener('seeked', onSeeked);
                         drawFrame();
-                        requestAnimationFrame(() => { drawFrame(); res(video.currentTime); });
+                        requestAnimationFrame(() => {
+                            drawFrame();
+                            res({ currentTime: video.currentTime, mediaTime });
+                        });
                     };
                     const onSeeked = () => {
                         if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-                            frameCallbackId = video.requestVideoFrameCallback(() => finish());
+                            frameCallbackId = video.requestVideoFrameCallback((_, info) => finish(info));
                         } else {
                             finish();
                         }
@@ -2466,6 +2561,7 @@
             };
 
             async function loadVideo(url, sourceInfo = {}) {
+                stopFrameTracking();
                 resetAll();
                 currentVideoInfo = null;
                 video.src = url;
@@ -2478,6 +2574,7 @@
                     lastModified: Number.isFinite(sourceInfo.lastModified) ? sourceInfo.lastModified : null
                 };
 
+                startFrameTracking();
                 detectFPSOnce();
 
                 resizeCanvasToVideo();
